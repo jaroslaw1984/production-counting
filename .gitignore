@@ -1,4 +1,19 @@
-<<<<<<< HEAD
+__pycache__/
+*.py[cod]
+*.env
+.env
+.venv/
+venv/
+.envrc
+*.log
+*.sqlite3
+.DS_Store
+.idea/
+.vscode/
+dist/
+build/
+*.egg-info/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -206,20 +221,3 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-=======
-__pycache__/
-*.py[cod]
-*.env
-.env
-.venv/
-venv/
-.envrc
-*.log
-*.sqlite3
-.DS_Store
-.idea/
-.vscode/
-dist/
-build/
-*.egg-info/
->>>>>>> ed1ca36 (Init: project skeleton, gitignore)

@@ -16,6 +16,7 @@ def run_app():
 
 # 2) Lewy panel (np. przyciski/filtry)
     left = customtkinter.CTkFrame(root)
+    left.grid(row=0, column=0, sticky="ns", padx=10, pady=10)
     left.grid_columnconfigure(0, weight=1) # tylko góra-dół
 
 # 3) Prawa część (rośnie w obie strony 
