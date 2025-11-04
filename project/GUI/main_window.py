@@ -47,7 +47,7 @@ def run_app():
                 pass
 
 # 6) Przykładowe przyciski w lewym panelu
-    load_machine = customtkinter.CTkButton(left, text="Wczytaj Maszynę")
+    load_machine = customtkinter.CTkButton(left, text="Wczytaj plik")
     load_machine.grid(row=0, column=0, pady=(0, 10), sticky="ew")
     count_button = customtkinter.CTkButton(left, text="Przelicz produkcję")
     count_button.grid(row=1, column=0, pady=(0, 10), sticky="ew")
