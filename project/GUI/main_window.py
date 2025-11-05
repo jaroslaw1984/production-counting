@@ -6,6 +6,8 @@ from project.Core.data_loader import load_excel
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
+    app_state = {"df": None}  # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
+    
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
     customtkinter.set_default_color_theme("dark-blue")  # Motywy: "blue" (domyślny), "green", "dark-blue"
     
@@ -59,34 +61,22 @@ def run_app():
             title="Wybierz plik Excel",
             filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
         )
-
         if not file_path:
-            return  # użytkownik anulował
+            return
         try:
             df = load_excel(file_path)
-            result_var.set(f"Wczytano {len(df)} rekordów z pliku {file_path.split('/')[-1]}")
+            app_state["df"] = df  # <-- ZAPAMIĘTAJ DF
+            from pathlib import Path
+            result_var.set(f"Wczytano {len(df)} rekordów z pliku {Path(file_path).name}")
 
-            # wypełnij CTkTextbox (użyj standardowych indeksów tekstu)
-            try:
-                text.configure(state="normal")
-            except Exception:
-                pass
-            try:
-                text.delete("1.0", "end")
-            except Exception:
-                # zapasowe czyszczenie: użyj delete z tkinter.END
-                try:
-                    text.delete("1.0", tk.END)
-                except Exception:
-                    pass
-            # wstaw DataFrame jako tekst
-            text.insert("end", df.to_string())
-            try:
-                text.configure(state="disabled")
-            except Exception:
-                pass
+            text.configure(state="normal")
+            text.delete("1.0", "end")
+            preview = df.head(50).to_string(index=False)  # podgląd, nie cały plik
+            text.insert("end", preview)
+            text.configure(state="disabled")
         except Exception as e:
             messagebox.showerror("Błąd", f"Błąd podczas wczytywania pliku: {e}")
+
 
 # 6) Przykładowe przyciski w lewym panelu
     load_machine = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
