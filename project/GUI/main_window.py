@@ -1,12 +1,13 @@
 import customtkinter
 import pandas as pd
-from tkinter import ttk
-# from project.GUI.widgets import apply_theme
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from project.Core.data_loader import load_excel
 
-# --- GUI ---
+# --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
-    customtkinter.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
-    customtkinter.set_default_color_theme("dark-blue")  # Themes: "blue" (standard), "green", "dark-blue"
+    customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
+    customtkinter.set_default_color_theme("dark-blue")  # Motywy: "blue" (domyślny), "green", "dark-blue"
     
     root = customtkinter.CTk()
     root.title("Policz produkcję")
@@ -34,6 +35,11 @@ def run_app():
     text = customtkinter.CTkTextbox(right)
     text.grid(row=0, column=0, sticky="nsew") # wypełnij cały dostępny obszar
 
+    # zmienna statusu i etykieta (wyświetlają liczbę wczytanych rekordów lub komunikaty)
+    result_var = tk.StringVar(value="")
+    status_label = customtkinter.CTkLabel(left, textvariable=result_var, anchor="w")
+    status_label.grid(row=4, column=0, pady=(6, 0), sticky="ew")
+
     def change():
         if customtkinter.get_appearance_mode() == "Light":
             customtkinter.set_appearance_mode("Dark")
@@ -48,21 +54,50 @@ def run_app():
             except Exception:
                 pass
 
-    def load_excler_to_treeview():
-        # wczytaj excel (pierwszy arkusz)
-        df = pd.read_excel(file_path, engine='openpyxl')
+    def on_open_file():
+        file_path = filedialog.askopenfilename(
+            title="Wybierz plik Excel",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+        )
 
+        if not file_path:
+            return  # użytkownik anulował
+        try:
+            df = load_excel(file_path)
+            result_var.set(f"Wczytano {len(df)} rekordów z pliku {file_path.split('/')[-1]}")
+
+            # wypełnij CTkTextbox (użyj standardowych indeksów tekstu)
+            try:
+                text.configure(state="normal")
+            except Exception:
+                pass
+            try:
+                text.delete("1.0", "end")
+            except Exception:
+                # zapasowe czyszczenie: użyj delete z tkinter.END
+                try:
+                    text.delete("1.0", tk.END)
+                except Exception:
+                    pass
+            # wstaw DataFrame jako tekst
+            text.insert("end", df.to_string())
+            try:
+                text.configure(state="disabled")
+            except Exception:
+                pass
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Błąd podczas wczytywania pliku: {e}")
 
 # 6) Przykładowe przyciski w lewym panelu
-    load_machine = customtkinter.CTkButton(left, text="Wczytaj plik")
+    load_machine = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
     load_machine.grid(row=0, column=0, pady=(0, 10), sticky="ew")
     count_button = customtkinter.CTkButton(left, text="Przelicz produkcję")
     count_button.grid(row=1, column=0, pady=(0, 10), sticky="ew")
     clean_button = customtkinter.CTkButton(left, text="Wyczyść")
     clean_button.grid(row=2, column=0, pady=(0, 10), sticky="ew")
-    # place theme toggle button in the left panel so it matches other controls
-    # set initial text according to current appearance
-    # 
+    # umieść przycisk przełączania motywu w lewym panelu, aby pasował do pozostałych kontrolek
+    # ustaw początkowy tekst zgodnie z aktualnym trybem wyglądu
+
     toogle_text = "Jasny motyw" if customtkinter.get_appearance_mode() == "Dark" else "Ciemny motyw"
     ch_theme = customtkinter.CTkButton(left, text=toogle_text, command=change)
     ch_theme.grid(row=3, column=0, pady=(20, 10), sticky="ew")
