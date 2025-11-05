@@ -1,4 +1,6 @@
 import customtkinter
+import pandas as pd
+from tkinter import ttk
 # from project.GUI.widgets import apply_theme
 
 # --- GUI ---
@@ -45,6 +47,11 @@ def run_app():
                 ch_theme.configure(text="Ciemny motyw")
             except Exception:
                 pass
+
+    def load_excler_to_treeview():
+        # wczytaj excel (pierwszy arkusz)
+        df = pd.read_excel(file_path, engine='openpyxl')
+
 
 # 6) Przykładowe przyciski w lewym panelu
     load_machine = customtkinter.CTkButton(left, text="Wczytaj plik")
