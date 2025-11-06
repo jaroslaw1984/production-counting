@@ -13,6 +13,8 @@ venv/
 dist/
 build/
 *.egg-info/
+*.xls
+*.xlsx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
