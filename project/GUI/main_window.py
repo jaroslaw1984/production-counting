@@ -3,6 +3,7 @@ import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from project.Core.data_loader import load_excel
+from pathlib import Path
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
@@ -66,7 +67,7 @@ def run_app():
         try:
             df = load_excel(file_path)
             app_state["df"] = df  # <-- ZAPAMIĘTAJ DF
-            from pathlib import Path
+            
             result_var.set(f"Wczytano {len(df)} rekordów z pliku {Path(file_path).name}")
 
             text.configure(state="normal")
