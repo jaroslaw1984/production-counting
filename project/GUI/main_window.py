@@ -68,7 +68,37 @@ def run_app():
             df = load_excel(file_path)
             app_state["df"] = df  # <-- ZAPAMIĘTAJ DF
             
-            result_var.set(f"Wczytano {len(df)} rekordów z pliku {Path(file_path).name}")
+            # ---- nowy popup z informacją o wczytanych rekordach ----
+            popup = customtkinter.CTkToplevel(root)
+            popup.title("Wczytano dane")
+            popup.geometry("420x140")
+            popup.transient(root)  # okno podrzędne względem głównego
+            popup.grab_set()  # modalne okno
+
+            # wyśrodkuj popup względem root
+            root.update_idletasks()
+            popup.update_idletasks()
+            rw = root.winfo_width()
+            rh = root.winfo_height()
+            rx = root.winfo_rootx()
+            ry = root.winfo_rooty()
+            pw = popup.winfo_width()
+            ph = popup.winfo_height()
+            x = rx + (rw - pw) // 2
+            y = ry + (rh - ph) // 2
+            popup.geometry(f"+{x}+{y}")
+
+            popup.grab_set()  # modalne okno
+
+            msgbox = f"Wczytano {len(df)} rekordów z pliku:\n{Path(file_path).name}"
+            label = customtkinter.CTkLabel(popup, text=msgbox, wraplength=380, anchor="center", justify="center")
+            label.pack(padx=16, pady=(16, 8), fill="both")
+
+            confirm_button = customtkinter.CTkButton(popup, text="OK", command=popup.destroy)
+            confirm_button.pack(pady=(20, 16))
+
+            root.wait_window(popup)  # czekaj aż okno zostanie zamknięte
+            # -------------------------------------------------------   
 
             text.configure(state="normal")
             text.delete("1.0", "end")
