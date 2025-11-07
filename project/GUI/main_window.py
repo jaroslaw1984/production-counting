@@ -122,8 +122,5 @@ def run_app():
     toogle_text = "Jasny motyw" if customtkinter.get_appearance_mode() == "Dark" else "Ciemny motyw"
     ch_theme = customtkinter.CTkButton(left, text=toogle_text, command=change)
     ch_theme.grid(row=3, column=0, pady=(20, 10), sticky="ew")
-
-# Jeśli chcesz, by przyciski rozszerzały się na szerokość panelu:
-    # left.grid_columnconfigure(0, weight=1)
-
+    
     root.mainloop()
