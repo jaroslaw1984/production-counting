@@ -8,7 +8,7 @@ from pathlib import Path
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
     app_state = {"df": None}  # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
-    
+
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
     customtkinter.set_default_color_theme("dark-blue")  # Motywy: "blue" (domyślny), "green", "dark-blue"
     
@@ -19,6 +19,8 @@ def run_app():
 # 1) Główna siatka: 2 kolumny (lewy panel i prawa treść)
     root.grid_columnconfigure(1, weight=1)
     root.grid_rowconfigure(0, weight=1)
+
+    default_font = customtkinter.CTkFont(family="Segoe UI", size=18, weight="bold")
 
 # 2) Lewy panel (np. przyciski/filtry)
     left = customtkinter.CTkFrame(root)
@@ -37,11 +39,26 @@ def run_app():
 # 5) Element, który ma się rozciągać (np. Text lub Treevie)
     text = customtkinter.CTkTextbox(right)
     text.grid(row=0, column=0, sticky="nsew") # wypełnij cały dostępny obszar
+    text.configure(state="disabled")  # na start zablokowany do edycji
+
+    # placeholder (nakładana etykieta wewnątrz Textboxa)
+    placeholder_text = "Program do obliczania produkcji \n\nKliknij 'Wczytaj plik', aby załadować dane. \n\n Następnie kliknij 'Przelicz produkcję', aby uzyskać wyniki. \n\n Dopuszczalne formaty plików Excel: .xlsx .xls"
+    placeholder_lbl = customtkinter.CTkLabel(text, text=placeholder_text, justify="center", text_color="#888888", font=default_font)
+    # umieść placeholder wewnątrz textboxa, wyśrodkowany
+    placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
 
     # zmienna statusu i etykieta (wyświetlają liczbę wczytanych rekordów lub komunikaty)
     result_var = tk.StringVar(value="")
     status_label = customtkinter.CTkLabel(left, textvariable=result_var, anchor="w")
     status_label.grid(row=4, column=0, pady=(6, 0), sticky="ew")
+
+    def _upadate_placeholder_visibility():
+        # sprawdź zawartość i pokaż/ukryj placeholder
+        content = text.get("1.0", "end-1c")
+        if content.strip():
+            placeholder_lbl.place_forget()
+        else:
+            placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
 
     def change():
         if customtkinter.get_appearance_mode() == "Light":
@@ -105,6 +122,7 @@ def run_app():
             preview = df.head(50).to_string(index=False)  # podgląd, nie cały plik
             text.insert("end", preview)
             text.configure(state="disabled")
+            _upadate_placeholder_visibility()
         except Exception as e:
             messagebox.showerror("Błąd", f"Błąd podczas wczytywania pliku: {e}")
 
@@ -113,6 +131,7 @@ def run_app():
         text.delete("1.0", "end")
         text.configure(state="disabled")
         result_var.set("")
+        _upadate_placeholder_visibility()
 
 # 6) Przykładowe przyciski w lewym panelu
     load_machine_btn = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
