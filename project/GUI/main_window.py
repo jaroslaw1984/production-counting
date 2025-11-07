@@ -110,12 +110,12 @@ def run_app():
 
 
 # 6) Przykładowe przyciski w lewym panelu
-    load_machine = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
-    load_machine.grid(row=0, column=0, pady=(0, 10), sticky="ew")
-    count_button = customtkinter.CTkButton(left, text="Przelicz produkcję")
-    count_button.grid(row=1, column=0, pady=(0, 10), sticky="ew")
-    clean_button = customtkinter.CTkButton(left, text="Wyczyść")
-    clean_button.grid(row=2, column=0, pady=(0, 10), sticky="ew")
+    load_machine_btn = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
+    load_machine_btn.grid(row=0, column=0, pady=(0, 10), sticky="ew")
+    count_production_btn = customtkinter.CTkButton(left, text="Przelicz produkcję")
+    count_production_btn.grid(row=1, column=0, pady=(0, 10), sticky="ew")
+    clean_btn = customtkinter.CTkButton(left, text="Wyczyść")
+    clean_btn.grid(row=2, column=0, pady=(0, 10), sticky="ew")
     # umieść przycisk przełączania motywu w lewym panelu, aby pasował do pozostałych kontrolek
     # ustaw początkowy tekst zgodnie z aktualnym trybem wyglądu
 
