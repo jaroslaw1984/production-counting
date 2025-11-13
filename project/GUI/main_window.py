@@ -1,7 +1,7 @@
 import customtkinter
 import pandas as pd
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from project.Core.data_loader import load_excel
 from pathlib import Path
 
@@ -76,21 +76,34 @@ def run_app():
 
     def on_open_file():
         file_path = filedialog.askopenfilename(
-            title="Wybierz plik Excel",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+            title="Wybierz plik",
+            filetypes=[
+                ("Excel files", ("*.xlsx", "*.xls")),
+                ("CSV files", ("*.csv",)),
+                ("All files", ("*.*",)),
+            ],
         )
         if not file_path:
             return
         try:
-            df = load_excel(file_path)
-            app_state["df"] = df  # <-- ZAPAMIĘTAJ DF
-            
-            # ---- nowy popup z informacją o wczytanych rekordach ----
+            df = Path(file_path).suffix.lower()
+            if df in (".xlsx", ".xls"):
+                # wymagane: openpyxl dla xlsx
+                df = pd.read_excel(file_path, engine="openpyxl")
+            elif df == ".csv":
+                 # dopasuj encoding i separator do Twojego pliku
+                df = pd.read_csv(file_path, encoding="utf-8", sep=",", low_memory=False)
+            else:
+                messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz plik .xlsx, .xls lub .csv")
+                return
+            app_state["df"] = df
+
+            # ---- nowy popup z informacją o wczytanych rekordach i akcjami ----
             popup = customtkinter.CTkToplevel(root)
             popup.title("Wczytano dane")
-            popup.geometry("420x140")
-            popup.transient(root)  # okno podrzędne względem głównego
-            popup.grab_set()  # modalne okno
+            popup.geometry("480x180")
+            popup.transient(root)
+            popup.grab_set()
 
             # wyśrodkuj popup względem root
             root.update_idletasks()
@@ -105,18 +118,89 @@ def run_app():
             y = ry + (rh - ph) // 2
             popup.geometry(f"+{x}+{y}")
 
-            popup.grab_set()  # modalne okno
-
             msgbox = f"Wczytano {len(df)} rekordów z pliku:\n{Path(file_path).name}"
-            label = customtkinter.CTkLabel(popup, text=msgbox, wraplength=380, anchor="center", justify="center")
-            label.pack(padx=16, pady=(16, 8), fill="both")
+            label = customtkinter.CTkLabel(popup, text=msgbox, wraplength=440, anchor="center", justify="center")
+            label.pack(padx=12, pady=(12, 6), fill="both")
+
+            # helpery do podglądu/kolumn/tabeli
+            def show_preview():
+                # usuń ewentualną ramkę z tabelą
+                tf = app_state.get("table_frame")
+                if tf is not None:
+                    try:
+                        tf.destroy()
+                    except Exception:
+                        pass
+                    app_state["table_frame"] = None
+                # przywróć textbox (jeśli ukryty)
+                try:
+                    text.grid(row=0, column=0, sticky="nsew")
+                except Exception:
+                    pass
+                # wstaw podgląd do textboxa
+                text.configure(state="normal")
+                text.delete("1.0", "end")
+                preview = df.head(50).to_string(index=False)
+                text.insert("end", preview)
+                text.configure(state="disabled")
+                _upadate_placeholder_visibility()
+
+            def show_columns():
+                cols = "\n".join(map(str, df.columns))
+                cols_popup = customtkinter.CTkToplevel(root)
+                cols_popup.title("Kolumny w pliku")
+                cols_popup.geometry("360x300")
+                cols_popup.transient(root)
+                cols_popup.grab_set()
+                lbl = customtkinter.CTkLabel(cols_popup, text=cols, anchor="nw", justify="left")
+                lbl.pack(fill="both", expand=True, padx=12, pady=12)
+                ok = customtkinter.CTkButton(cols_popup, text="Zamknij", command=cols_popup.destroy)
+                ok.pack(pady=(0,12))
+
+            def show_table():
+                # ukryj textbox
+                try:
+                    text.grid_forget()
+                except Exception:
+                    pass
+                # stwórz ramkę na tabelę
+                tf = customtkinter.CTkFrame(right)
+                tf.grid(row=0, column=0, sticky="nsew")
+                app_state["table_frame"] = tf
+                cols = list(df.columns)
+                tree = ttk.Treeview(tf, columns=cols, show="headings")
+                vsb = ttk.Scrollbar(tf, orient="vertical", command=tree.yview)
+                hsb = ttk.Scrollbar(tf, orient="horizontal", command=tree.xview)
+                tree.configure(yscroll=vsb.set, xscroll=hsb.set)
+                for col in cols:
+                    tree.heading(col, text=col)
+                    tree.column(col, width=120, anchor="w")
+                for i, row in enumerate(df.itertuples(index=False, name=None)):
+                    if i >= 2000:
+                        break
+                    tree.insert("", "end", values=row)
+                tree.grid(row=0, column=0, sticky="nsew")
+                vsb.grid(row=0, column=1, sticky="ns")
+                hsb.grid(row=1, column=0, sticky="ew")
+                tf.grid_rowconfigure(0, weight=1)
+                tf.grid_columnconfigure(0, weight=1)
+
+            # ramka z przyciskami akcji
+            btn_frame = customtkinter.CTkFrame(popup)
+            btn_frame.pack(padx=12, pady=(6, 6), fill="x")
+            p_btn = customtkinter.CTkButton(btn_frame, text="Pokaż podgląd", command=show_preview)
+            p_btn.grid(row=0, column=0, padx=6, pady=6)
+            c_btn = customtkinter.CTkButton(btn_frame, text="Pokaż kolumny", command=show_columns)
+            c_btn.grid(row=0, column=1, padx=6, pady=6)
+            t_btn = customtkinter.CTkButton(btn_frame, text="Otwórz w tabeli", command=show_table)
+            t_btn.grid(row=0, column=2, padx=6, pady=6)
 
             confirm_button = customtkinter.CTkButton(popup, text="OK", command=popup.destroy)
-            confirm_button.pack(pady=(20, 16))
+            confirm_button.pack(pady=(6, 12))
 
             root.wait_window(popup)  # czekaj aż okno zostanie zamknięte
-            # -------------------------------------------------------   
 
+            # po zamknięciu popup wstaw domyślny podgląd
             text.configure(state="normal")
             text.delete("1.0", "end")
             preview = df.head(50).to_string(index=False)  # podgląd, nie cały plik
