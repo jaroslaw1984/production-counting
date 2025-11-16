@@ -96,7 +96,7 @@ def run_app():
             else:
                 messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz plik .xlsx, .xls lub .csv")
                 return
-            app_state["df"] = df
+
 
             # ---- nowy popup z informacją o wczytanych rekordach i akcjami ----
             popup = customtkinter.CTkToplevel(root)
@@ -166,12 +166,10 @@ def run_app():
                 # stwórz ramkę na tabelę
                 tf = customtkinter.CTkFrame(right)
                 tf.grid(row=0, column=0, sticky="nsew")
-                app_state["table_frame"] = tf
                 cols = list(df.columns)
                 tree = ttk.Treeview(tf, columns=cols, show="headings")
                 vsb = ttk.Scrollbar(tf, orient="vertical", command=tree.yview)
                 hsb = ttk.Scrollbar(tf, orient="horizontal", command=tree.xview)
-                tree.configure(yscroll=vsb.set, xscroll=hsb.set)
                 for col in cols:
                     tree.heading(col, text=col)
                     tree.column(col, width=120, anchor="w")
