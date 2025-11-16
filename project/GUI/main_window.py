@@ -60,6 +60,7 @@ def run_app():
         else:
             placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
 
+    # funkcja przełączania motywu
     def change():
         if customtkinter.get_appearance_mode() == "Light":
             customtkinter.set_appearance_mode("Dark")
@@ -74,6 +75,7 @@ def run_app():
             except Exception:
                 pass
 
+    # funkcja obsługi wczytywania pliku
     def on_open_file():
         file_path = filedialog.askopenfilename(
             title="Wybierz plik",
@@ -144,7 +146,8 @@ def run_app():
                 text.insert("end", preview)
                 text.configure(state="disabled")
                 _upadate_placeholder_visibility()
-
+            
+            # funkcja pokazująca kolumny 
             def show_columns():
                 cols = "\n".join(map(str, df.columns))
                 cols_popup = customtkinter.CTkToplevel(root)
@@ -157,6 +160,7 @@ def run_app():
                 ok = customtkinter.CTkButton(cols_popup, text="Zamknij", command=cols_popup.destroy)
                 ok.pack(pady=(0,12))
 
+            # funkcja pokazująca dane w tabeli
             def show_table():
                 # ukryj textbox
                 try:
@@ -184,16 +188,16 @@ def run_app():
                 tf.grid_columnconfigure(0, weight=1)
 
             # ramka z przyciskami akcji
-            btn_frame = customtkinter.CTkFrame(popup)
-            btn_frame.pack(padx=12, pady=(6, 6), fill="x")
-            p_btn = customtkinter.CTkButton(btn_frame, text="Pokaż podgląd", command=show_preview)
-            p_btn.grid(row=0, column=0, padx=6, pady=6)
-            c_btn = customtkinter.CTkButton(btn_frame, text="Pokaż kolumny", command=show_columns)
-            c_btn.grid(row=0, column=1, padx=6, pady=6)
-            t_btn = customtkinter.CTkButton(btn_frame, text="Otwórz w tabeli", command=show_table)
-            t_btn.grid(row=0, column=2, padx=6, pady=6)
+            # btn_frame = customtkinter.CTkFrame(popup)
+            # btn_frame.pack(padx=12, pady=(6, 6), fill="x")
+            # p_btn = customtkinter.CTkButton(btn_frame, text="Pokaż podgląd", command=show_preview)
+            # p_btn.grid(row=0, column=0, padx=6, pady=6)
+            # c_btn = customtkinter.CTkButton(btn_frame, text="Pokaż kolumny", command=show_columns)
+            # c_btn.grid(row=0, column=1, padx=6, pady=6)
+            # t_btn = customtkinter.CTkButton(btn_frame, text="OK", command=lambda: (show_table(), popup.destroy()))
+            # t_btn.grid(pady=(6, 12))
 
-            confirm_button = customtkinter.CTkButton(popup, text="OK", command=popup.destroy)
+            confirm_button = customtkinter.CTkButton(popup, text="OK", command=lambda: (show_table(), popup.destroy()))
             confirm_button.pack(pady=(6, 12))
 
             root.wait_window(popup)  # czekaj aż okno zostanie zamknięte
@@ -208,6 +212,7 @@ def run_app():
         except Exception as e:
             messagebox.showerror("Błąd", f"Błąd podczas wczytywania pliku: {e}")
 
+    # funkcja czyszczenia textboxa
     def clean_text():
         text.configure(state="normal")
         text.delete("1.0", "end")
