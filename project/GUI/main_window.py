@@ -4,10 +4,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from project.Core.data_loader import load_excel
 from pathlib import Path
+from typing import Any
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
-    app_state = {"df": None}  # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
+    app_state: dict[str, Any] = {"df": None, "table_frame": None} # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
 
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
     customtkinter.set_default_color_theme("dark-blue")  # Motywy: "blue" (domyślny), "green", "dark-blue"
@@ -74,6 +75,45 @@ def run_app():
                 ch_theme.configure(text="Ciemny motyw")
             except Exception:
                 pass
+    
+    def show_table_from_df(df: pd.DataFrame):
+        # 1) schowaj textbox
+        # usuń poprzednią, jeśli istnieje
+        old_tf = app_state.get("table_frame")
+        if old_tf is not None:
+            try:
+                old_tf.destroy()
+            except Exception:
+                pass
+
+        # 3) zbuduj nową ramkę + tree
+        tf = customtkinter.CTkFrame(right)
+        tf.grid(row=0, column=0, sticky="nsew")
+        app_state["table_frame"] = tf
+
+        cols = list(map(str, df.columns))
+        tree = ttk.Treeview(tf, columns=cols, show="headings")
+
+        vsb = ttk.Scrollbar(tf, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(tf, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        for col in cols:
+            tree.heading(col, text=col)
+            tree.column(col, width=120, anchor="w")
+
+        # Uwaga: nie ładuj bez limitu tysięcy wierszy – daj podgląd
+        for i, row in enumerate(df.itertuples(index=False, name=None)):
+            if i >= 2000:
+                break
+            tree.insert("", "end", values=row)
+
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        tf.grid_rowconfigure(0, weight=1)
+        tf.grid_columnconfigure(0, weight=1)
+
 
     # funkcja obsługi wczytywania pliku
     def on_open_file():
@@ -87,130 +127,98 @@ def run_app():
         )
         if not file_path:
             return
-        try:
-            df = Path(file_path).suffix.lower()
-            if df in (".xlsx", ".xls"):
-                # wymagane: openpyxl dla xlsx
-                df = pd.read_excel(file_path, engine="openpyxl")
-            elif df == ".csv":
-                 # dopasuj encoding i separator do Twojego pliku
-                df = pd.read_csv(file_path, encoding="utf-8", sep=",", low_memory=False)
-            else:
-                messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz plik .xlsx, .xls lub .csv")
-                return
+        
+        ext = Path(file_path).suffix.lower()
+        if ext in (".xlsx", ".xls"):
+            df = pd.read_excel(file_path, engine="openpyxl")
+        elif ext == ".csv":
+            df = pd.read_csv(file_path, encoding="utf-8", sep=",", low_memory=False)
+        else:
+            messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz .xlsx, .xls lub .csv")
+            return
 
+        
+        app_state["df"] = df  # <-- ZAPAMIĘTAJ
 
-            # ---- nowy popup z informacją o wczytanych rekordach i akcjami ----
-            popup = customtkinter.CTkToplevel(root)
-            popup.title("Wczytano dane")
-            popup.geometry("480x180")
-            popup.transient(root)
-            popup.grab_set()
+        # ---- nowy popup z informacją o wczytanych rekordach i akcjami ----
+        popup = customtkinter.CTkToplevel(root)
+        popup.title("Wczytano dane")
+        popup.geometry("480x180")
+        popup.transient(root)
+        popup.grab_set()
 
-            # wyśrodkuj popup względem root
-            root.update_idletasks()
-            popup.update_idletasks()
-            rw = root.winfo_width()
-            rh = root.winfo_height()
-            rx = root.winfo_rootx()
-            ry = root.winfo_rooty()
-            pw = popup.winfo_width()
-            ph = popup.winfo_height()
-            x = rx + (rw - pw) // 2
-            y = ry + (rh - ph) // 2
-            popup.geometry(f"+{x}+{y}")
+        # wyśrodkuj popup względem root
+        root.update_idletasks()
+        popup.update_idletasks()
+        rw = root.winfo_width()
+        rh = root.winfo_height()
+        rx = root.winfo_rootx()
+        ry = root.winfo_rooty()
+        pw = popup.winfo_width()
+        ph = popup.winfo_height()
+        x = rx + (rw - pw) // 2
+        y = ry + (rh - ph) // 2
+        popup.geometry(f"+{x}+{y}")
 
-            msgbox = f"Wczytano {len(df)} rekordów z pliku:\n{Path(file_path).name}"
-            label = customtkinter.CTkLabel(popup, text=msgbox, wraplength=440, anchor="center", justify="center")
-            label.pack(padx=12, pady=(12, 6), fill="both")
+        msgbox = f"Wczytano {len(df)} rekordów z pliku:\n{Path(file_path).name}"
+        label = customtkinter.CTkLabel(popup, text=msgbox, wraplength=440, anchor="center", justify="center")
+        label.pack(padx=12, pady=(12, 6), fill="both")
 
-            # helpery do podglądu/kolumn/tabeli
-            def show_preview():
-                # usuń ewentualną ramkę z tabelą
-                tf = app_state.get("table_frame")
-                if tf is not None:
-                    try:
-                        tf.destroy()
-                    except Exception:
-                        pass
-                    app_state["table_frame"] = None
-                # przywróć textbox (jeśli ukryty)
+        # # Po zamknięciu popup:
+        # show_table_from_df(df)
+        # text.configure(state="normal")
+        # text.delete("1.0", "end")
+        # text.insert("end", df.head(50).to_string(index=False))
+        # text.configure(state="disabled")
+        # _upadate_placeholder_visibility()
+        # helpery do podglądu/kolumn/tabeli
+
+        # funkcja pokazująca podgląd danych
+        def show_preview():
+            # usuń ewentualną ramkę z tabelą
+            tf = app_state.get("table_frame")
+            if tf is not None:
                 try:
-                    text.grid(row=0, column=0, sticky="nsew")
+                    tf.destroy()
                 except Exception:
                     pass
-                # wstaw podgląd do textboxa
-                text.configure(state="normal")
-                text.delete("1.0", "end")
-                preview = df.head(50).to_string(index=False)
-                text.insert("end", preview)
-                text.configure(state="disabled")
-                _upadate_placeholder_visibility()
-            
-            # funkcja pokazująca kolumny 
-            def show_columns():
-                cols = "\n".join(map(str, df.columns))
-                cols_popup = customtkinter.CTkToplevel(root)
-                cols_popup.title("Kolumny w pliku")
-                cols_popup.geometry("360x300")
-                cols_popup.transient(root)
-                cols_popup.grab_set()
-                lbl = customtkinter.CTkLabel(cols_popup, text=cols, anchor="nw", justify="left")
-                lbl.pack(fill="both", expand=True, padx=12, pady=12)
-                ok = customtkinter.CTkButton(cols_popup, text="Zamknij", command=cols_popup.destroy)
-                ok.pack(pady=(0,12))
-
-            # funkcja pokazująca dane w tabeli
-            def show_table():
-                # ukryj textbox
-                try:
-                    text.grid_forget()
-                except Exception:
-                    pass
-                # stwórz ramkę na tabelę
-                tf = customtkinter.CTkFrame(right)
-                tf.grid(row=0, column=0, sticky="nsew")
-                cols = list(df.columns)
-                tree = ttk.Treeview(tf, columns=cols, show="headings")
-                vsb = ttk.Scrollbar(tf, orient="vertical", command=tree.yview)
-                hsb = ttk.Scrollbar(tf, orient="horizontal", command=tree.xview)
-                for col in cols:
-                    tree.heading(col, text=col)
-                    tree.column(col, width=120, anchor="w")
-                for i, row in enumerate(df.itertuples(index=False, name=None)):
-                    if i >= 2000:
-                        break
-                    tree.insert("", "end", values=row)
-                tree.grid(row=0, column=0, sticky="nsew")
-                vsb.grid(row=0, column=1, sticky="ns")
-                hsb.grid(row=1, column=0, sticky="ew")
-                tf.grid_rowconfigure(0, weight=1)
-                tf.grid_columnconfigure(0, weight=1)
-
-            # ramka z przyciskami akcji
-            # btn_frame = customtkinter.CTkFrame(popup)
-            # btn_frame.pack(padx=12, pady=(6, 6), fill="x")
-            # p_btn = customtkinter.CTkButton(btn_frame, text="Pokaż podgląd", command=show_preview)
-            # p_btn.grid(row=0, column=0, padx=6, pady=6)
-            # c_btn = customtkinter.CTkButton(btn_frame, text="Pokaż kolumny", command=show_columns)
-            # c_btn.grid(row=0, column=1, padx=6, pady=6)
-            # t_btn = customtkinter.CTkButton(btn_frame, text="OK", command=lambda: (show_table(), popup.destroy()))
-            # t_btn.grid(pady=(6, 12))
-
-            confirm_button = customtkinter.CTkButton(popup, text="OK", command=lambda: (show_table(), popup.destroy()))
-            confirm_button.pack(pady=(6, 12))
-
-            root.wait_window(popup)  # czekaj aż okno zostanie zamknięte
-
-            # po zamknięciu popup wstaw domyślny podgląd
+                app_state["table_frame"] = None
+            # przywróć textbox (jeśli ukryty)
+            try:
+                text.grid(row=0, column=0, sticky="nsew")
+            except Exception:
+                pass
+            # wstaw podgląd do textboxa
             text.configure(state="normal")
             text.delete("1.0", "end")
-            preview = df.head(50).to_string(index=False)  # podgląd, nie cały plik
+            preview = df.head(50).to_string(index=False)
             text.insert("end", preview)
             text.configure(state="disabled")
             _upadate_placeholder_visibility()
-        except Exception as e:
-            messagebox.showerror("Błąd", f"Błąd podczas wczytywania pliku: {e}")
+    
+        # ramka z przyciskami akcji
+        # btn_frame = customtkinter.CTkFrame(popup)
+        # btn_frame.pack(padx=12, pady=(6, 6), fill="x")
+        # p_btn = customtkinter.CTkButton(btn_frame, text="Pokaż podgląd", command=show_preview)
+        # p_btn.grid(row=0, column=0, padx=6, pady=6)
+        # c_btn = customtkinter.CTkButton(btn_frame, text="Pokaż kolumny", command=show_columns)
+        # c_btn.grid(row=0, column=1, padx=6, pady=6)
+        # t_btn = customtkinter.CTkButton(btn_frame, text="OK", command=lambda: (show_table(), popup.destroy()))
+        # t_btn.grid(pady=(6, 12))
+
+        confirm_button = customtkinter.CTkButton(popup, text="OK", command=lambda: (show_table_from_df(df), popup.destroy()))
+        confirm_button.pack(pady=(6, 12))
+
+        root.wait_window(popup)  # czekaj aż okno zostanie zamknięte
+
+        # po zamknięciu popup wstaw domyślny podgląd
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        preview = df.head(50).to_string(index=False)  # podgląd, nie cały plik
+        text.insert("end", preview)
+        text.configure(state="disabled")
+        _upadate_placeholder_visibility()
+
 
     # funkcja czyszczenia textboxa
     def clean_text():
