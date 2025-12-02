@@ -12,4 +12,4 @@ def load_excel(file_path: str) -> pd.DataFrame:
         return df
     except Exception as e:
         print(f"Błąd podczas wczytywania pliku Excel: {e}")
-        return None
+        return pd.DataFrame()
