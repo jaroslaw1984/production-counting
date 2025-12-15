@@ -6,6 +6,10 @@ from project.Core.data_loader import load_excel
 from pathlib import Path
 from typing import Any
 
+# stała ścieżka do pliku konfiguracyjnego
+BASE_DIR = Path(__file__).resolve().parent
+CONFING_PATH = BASE_DIR / "config" / "profile_config.csv"
+
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
     app_state: dict[str, Any] = {"df": None, "table_frame": None, "cfg": None, "current_view_df": None} # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
