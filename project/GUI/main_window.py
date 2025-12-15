@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 # stała ścieżka do pliku konfiguracyjnego
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 CONFING_PATH = BASE_DIR / "config" / "profile_config.csv"
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
@@ -149,6 +149,91 @@ def run_app():
 
         return df_cfg
     
+    def calculate_production():
+        df_plan = app_state.get("df")
+        if df_plan is None or df_plan.empty:
+            messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne.")
+            return
+        
+        try:
+            df_cfg = app_state.get("cfg")
+            if df_cfg is None:
+                df_cfg = load_profile_confing()
+                app_state["cfg"] = df_cfg
+        except Exception as e:
+            messagebox.showerror("Błąd wczytywania konfiguracji", str(e))
+            return
+
+        # tutaj dodaj logikę obliczania produkcji na podstawie df_plan i df_cfg
+        df_plan = app_state.get("df")
+        if df_plan is None or len(df_plan) == 0:
+            messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne.")
+            return
+        
+        # --- dalej robi merge i obliczenia ---
+        df = df_plan.copy()
+
+        rename_map = {}
+        if "Profile" in df.columns: rename_map["Profile"] = "profile",
+        if "Side" in df.columns: rename_map["Side"] = "side",
+        if "Length" in df.columns: rename_map["Length"] = "length",
+        df = df.rename(columns=rename_map)
+
+        for col in ("profiles", "side"):
+            if col not in df.columns:
+                messagebox.showerror("Błąd danych", f"Brak kolumny '{col}' w danych produkcyjnych.")
+                return
+        
+        df["profile"] = df["profile"].astpe("string")
+        df["side"] = df["side"].astype("string").str.zfill(4)
+
+        df = df.merge(df_cfg, on=["profile", "side"], how="left")
+
+        missing = df[df["setting_time"].isna()]
+        if missing.any():
+            missing_pairs = df.loc[missing, ["profile", "side"]].drop_duplicates().head(20)
+            messagebox.showerror(
+            "Brak w configu",
+            "Nie znaleziono setting_time dla:\n"
+            + missing_pairs.to_string(index=False)
+            + ("\n..." if missing_pairs.shape[0] >= 20 else "")
+            )
+            return
+    
+        # 0020 = obustronne
+        df.loc[df["side"] == "0020", "setting_time"] = 0
+
+        total_setting_min = float(df["setting_time"].sum())
+
+        AVG_SPEED_M_PER_MIN = 25
+        total_run_min = 0.0
+        if "length_m" in df.columns:
+            df["length_m"] = pd.to_numeric(df["length_m"], errors="coerce").fillna(0)
+            df["run_time_min"] = df["length_m"] / AVG_SPEED_M_PER_MIN
+            total_run_min = float(df["run_time_min"].sum())
+
+        total_min = total_setting_min + total_run_min
+        total_h = total_min / 60.0
+        shifts = total_h / 8.0
+
+        result_text = (
+            f"Config: {Path(app_state['cfg_path']).name}\n"
+            f"Czas zbrojeń: {total_setting_min:.1f} min\n"
+            f"Czas biegu:   {total_run_min:.1f} min\n"
+            f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
+            f"Zmiany (8h):   {shifts:.2f}\n"
+        )
+
+        
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert("end", result_text)
+        text.configure(state="disabled")
+        _upadate_placeholder_visibility()
+
+        # opcjonalnie: pokaż w treeview df z dołączonym setting_time
+        # show_table_from_df(df)
+    
     # funkcja obsługi wczytywania pliku
     def on_open_file():
         file_path = filedialog.askopenfilename(
@@ -265,7 +350,7 @@ def run_app():
 # 6) Przykładowe przyciski w lewym panelu
     load_machine_btn = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
     load_machine_btn.grid(row=0, column=0, pady=(0, 10), sticky="ew")
-    count_production_btn = customtkinter.CTkButton(left, text="Przelicz produkcję")
+    count_production_btn = customtkinter.CTkButton(left, text="Przelicz produkcję", command=calculate_production)
     count_production_btn.grid(row=1, column=0, pady=(0, 10), sticky="ew")
     clean_btn = customtkinter.CTkButton(left, text="Wyczyść", command=clean_text)
     clean_btn.grid(row=2, column=0, pady=(0, 10), sticky="ew")
