@@ -118,9 +118,14 @@ def run_app():
         tf.grid_rowconfigure(0, weight=1)
         tf.grid_columnconfigure(0, weight=1)
 
-    def load_profile_confing(csv_path: str) -> pd.DataFrame:
+    def load_profile_confing() -> pd.DataFrame:
+        # spradz czy plik istnieje
+        if not CONFING_PATH.exists():
+            raise FileNotFoundError(f"Plik konfiguracyjny nie istnieje: {CONFING_PATH}")
+
+        # wczytaj plik konfiguracyjny
         df_cfg = pd.read_csv(
-            csv_path,
+            CONFING_PATH,
             sep=";",
             encoding="utf-8",
             dtype={"profile": "string", "side": "string"},
