@@ -8,7 +8,7 @@ from typing import Any
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
-    app_state: dict[str, Any] = {"df": None, "table_frame": None} # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
+    app_state: dict[str, Any] = {"df": None, "table_frame": None, "cfg": None, "current_view_df": None} # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
 
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
     customtkinter.set_default_color_theme("dark-blue")  # Motywy: "blue" (domyślny), "green", "dark-blue"
@@ -114,7 +114,32 @@ def run_app():
         tf.grid_rowconfigure(0, weight=1)
         tf.grid_columnconfigure(0, weight=1)
 
+    def load_profile_confing(csv_path: str) -> pd.DataFrame:
+        df_cfg = pd.read_csv(
+            csv_path,
+            sep=";",
+            encoding="utf-8",
+            dtype={"profile": "string", "side": "string"},
+        )
+        # na wszelki wypadek: usuń spacje z nazw kolumn
+        df_cfg.columns = [col.strip().strip('"').rstrip(";") for col in df_cfg.columns]
 
+        required = {"profile", "side", "setting_time"}
+        missing = required - set(df_cfg.columns)
+        if missing:
+            raise ValueError(f"Brakujące kolumny w pliku konfiguracyjnym: {missing}") 
+
+        # upewnij się, że setting_time jest liczbą
+        df_cfg["setting_time"] = pd.to_numeric(df_cfg["setting_time"], errors="coerce").fillna(0).astype(int)
+
+        # kontrola duplikatów (profile+side musi być 1:1)
+        duplicates = df_cfg.duplicated(subset=["profile", "side"], keep=False)
+        if duplicates.any(): 
+            dup_rows = df_cfg[duplicates]
+            raise ValueError(f"Duplikaty w pliku konfiguracyjnym (profile+side musi być unikalne):\n{dup_rows}")
+
+        return df_cfg
+    
     # funkcja obsługi wczytywania pliku
     def on_open_file():
         file_path = filedialog.askopenfilename(
