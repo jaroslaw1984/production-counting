@@ -174,9 +174,9 @@ def run_app():
         df = df_plan.copy()
 
         rename_map = {}
-        if "Profile" in df.columns: rename_map["Profile"] = "profile",
-        if "Side" in df.columns: rename_map["Side"] = "side",
-        if "Length" in df.columns: rename_map["Length"] = "length",
+        if "Profile" in df.columns: rename_map["Profile"] = "profile"
+        if "Side" in df.columns: rename_map["Side"] = "side"
+        if "Length" in df.columns: rename_map["Length"] = "length"
         df = df.rename(columns=rename_map)
 
         for col in ("profile", "side"):
@@ -234,6 +234,32 @@ def run_app():
         # opcjonalnie: pokaż w treeview df z dołączonym setting_time
         # show_table_from_df(df)
     
+    def detect_side_column(df: pd.DataFrame) -> str:
+        """
+        Zwraca kolumnę, która zawiera strony 20/21/22/23.
+        Jeśli nie znajdzie – rzuca wyjątek (dane wejściowe są błędne).
+        """
+        allowed = {"0020", "0021", "0022", "0023"}
+
+        for col in df.columns:
+            s = (
+                df[col]
+                .astype("string")
+                .str.strip()
+                .str.replace(r"\.0$", "", regex=True)
+                .str.zfill(4)
+            )
+
+            non_empty = s[s != ""]
+            if non_empty.empty:
+                continue
+
+            if non_empty.isin(allowed).mean() > 0.8:
+                return col
+
+        raise ValueError("Nie znaleziono kolumny strony (20/21/22/23).")
+
+
     # funkcja obsługi wczytywania pliku
     def on_open_file():
         file_path = filedialog.askopenfilename(
@@ -246,34 +272,80 @@ def run_app():
         )
         if not file_path:
             return
-        
-        ext = Path(file_path).suffix.lower()
-        if ext in (".xlsx", ".xls"):
-            df = pd.read_excel(file_path, engine="openpyxl", header=1)
-            print(df.columns.tolist())  # <- tymczasowo, do sprawdzenia
+
+        try:
+            ext = Path(file_path).suffix.lower()
+
+            if ext in (".xlsx", ".xls"):
+                df_raw = pd.read_excel(file_path, engine="openpyxl", header=1)
+            elif ext == ".csv":
+                df_raw = pd.read_csv(file_path, encoding="utf-8", sep=",", low_memory=False)
+            else:
+                messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz .xlsx, .xls lub .csv")
+                return
+
+            # 1) czyść nagłówki
+            df_raw.columns = [str(c).strip() for c in df_raw.columns]
+
+            # 2) wybierz stałe kolumny
+            needed_fixed = [
+                "Stanowisko robocze",
+                "Artykuł",
+                "Docelowa wartość (P)",
+                "Jednostka (P)",
+                "Docelowa wartość (S)",
+                "Jednostka (S)",
+                "Rodzaj zlecenia",
+            ]
+
+            zlecenie_cols = [c for c in df_raw.columns if c.startswith("Zlecenie")]
+            if len(zlecenie_cols) < 2:
+                raise ValueError("Brakuje drugiej kolumny 'Zlecenie' (tej ze stroną).")
+
+            df = df_raw[needed_fixed + zlecenie_cols].copy()
+
+            # wybierz tę kolumnę Zlecenie*, która jest stroną
+            side_col = detect_side_column(df)
+
+            # teraz zostaw tylko potrzebne kolumny + side_col
+            df = df[needed_fixed + [side_col]].copy()
 
             df = df.rename(columns={
-                "Profilgeometrie": "profile",
-                "Side": "side",
-                "Length": "length_m",
+                "Stanowisko robocze": "workplace",
+                "Artykuł": "profile",
+                "Docelowa wartość (P)": "target_value_p",
+                "Jednostka (P)": "unit_p",
+                "Docelowa wartość (S)": "target_value_s",
+                "Jednostka (S)": "unit_s",
+                "Rodzaj zlecenia": "order_type",
+                side_col: "side",
             })
-        elif ext == ".csv":
-            df = pd.read_csv(file_path, encoding="utf-8", sep=",", low_memory=False)
-        else:
-            messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz .xlsx, .xls lub .csv")
+
+            df["profile"] = df["profile"].astype("string").str.strip()
+            df["side"] = (
+                df["side"].astype("string")
+                .str.strip()
+                .str.replace(r"\.0$", "", regex=True)
+                .str.zfill(4)
+)
+
+            # 6) normalizacja typów
+            df["profile"] = df["profile"].astype("string").str.strip()
+            df["side"] = df["side"].astype("string").str.strip().str.replace(r"\.0$", "", regex=True).str.zfill(4)
+
+            app_state["df"] = df  # zapamiętaj
+
+        except Exception as e:
+            messagebox.showerror("Błąd wczytywania pliku", str(e))
             return
 
-        
-        app_state["df"] = df  # <-- ZAPAMIĘTAJ
-
-        # ---- nowy popup z informacją o wczytanych rekordach i akcjami ----
+        # popup + pokazanie w Treeview (jak u Ciebie)
         popup = customtkinter.CTkToplevel(root)
         popup.title("Wczytano dane")
         popup.geometry("480x180")
         popup.transient(root)
         popup.grab_set()
 
-        # wyśrodkuj popup względem root
         root.update_idletasks()
         popup.update_idletasks()
         rw = root.winfo_width()
@@ -290,58 +362,19 @@ def run_app():
         label = customtkinter.CTkLabel(popup, text=msgbox, wraplength=440, anchor="center", justify="center")
         label.pack(padx=12, pady=(12, 6), fill="both")
 
-        # # Po zamknięciu popup:
-        # show_table_from_df(df)
-        # text.configure(state="normal")
-        # text.delete("1.0", "end")
-        # text.insert("end", df.head(50).to_string(index=False))
-        # text.configure(state="disabled")
-        # _upadate_placeholder_visibility()
-        # helpery do podglądu/kolumn/tabeli
-
-        # funkcja pokazująca podgląd danych
-        def show_preview():
-            # usuń ewentualną ramkę z tabelą
-            tf = app_state.get("table_frame")
-            if tf is not None:
-                try:
-                    tf.destroy()
-                except Exception:
-                    pass
-                app_state["table_frame"] = None
-            # przywróć textbox (jeśli ukryty)
-            try:
-                text.grid(row=0, column=0, sticky="nsew")
-            except Exception:
-                pass
-            # wstaw podgląd do textboxa
-            text.configure(state="normal")
-            text.delete("1.0", "end")
-            preview = df.head(50).to_string(index=False)
-            text.insert("end", preview)
-            text.configure(state="disabled")
-            _upadate_placeholder_visibility()
-    
-        # ramka z przyciskami akcji
-        # btn_frame = customtkinter.CTkFrame(popup)
-        # btn_frame.pack(padx=12, pady=(6, 6), fill="x")
-        # p_btn = customtkinter.CTkButton(btn_frame, text="Pokaż podgląd", command=show_preview)
-        # p_btn.grid(row=0, column=0, padx=6, pady=6)
-        # c_btn = customtkinter.CTkButton(btn_frame, text="Pokaż kolumny", command=show_columns)
-        # c_btn.grid(row=0, column=1, padx=6, pady=6)
-        # t_btn = customtkinter.CTkButton(btn_frame, text="OK", command=lambda: (show_table(), popup.destroy()))
-        # t_btn.grid(pady=(6, 12))
-
-        confirm_button = customtkinter.CTkButton(popup, text="OK", command=lambda: (show_table_from_df(df), popup.destroy()))
+        confirm_button = customtkinter.CTkButton(
+            popup,
+            text="OK",
+            command=lambda: (show_table_from_df(df), popup.destroy())
+        )
         confirm_button.pack(pady=(6, 12))
 
-        root.wait_window(popup)  # czekaj aż okno zostanie zamknięte
+        root.wait_window(popup)
 
-        # po zamknięciu popup wstaw domyślny podgląd
+        # tekstowy preview
         text.configure(state="normal")
         text.delete("1.0", "end")
-        preview = df.head(50).to_string(index=False)  # podgląd, nie cały plik
-        text.insert("end", preview)
+        text.insert("end", df.head(50).to_string(index=False))
         text.configure(state="disabled")
         _upadate_placeholder_visibility()
 
