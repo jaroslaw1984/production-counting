@@ -179,12 +179,12 @@ def run_app():
         if "Length" in df.columns: rename_map["Length"] = "length",
         df = df.rename(columns=rename_map)
 
-        for col in ("profiles", "side"):
+        for col in ("profile", "side"):
             if col not in df.columns:
                 messagebox.showerror("Błąd danych", f"Brak kolumny '{col}' w danych produkcyjnych.")
                 return
-        
-        df["profile"] = df["profile"].astpe("string")
+
+        df["profile"] = df["profile"].astype("string")
         df["side"] = df["side"].astype("string").str.zfill(4)
 
         df = df.merge(df_cfg, on=["profile", "side"], how="left")
@@ -249,7 +249,14 @@ def run_app():
         
         ext = Path(file_path).suffix.lower()
         if ext in (".xlsx", ".xls"):
-            df = pd.read_excel(file_path, engine="openpyxl")
+            df = pd.read_excel(file_path, engine="openpyxl", header=1)
+            print(df.columns.tolist())  # <- tymczasowo, do sprawdzenia
+
+            df = df.rename(columns={
+                "Profilgeometrie": "profile",
+                "Side": "side",
+                "Length": "length_m",
+            })
         elif ext == ".csv":
             df = pd.read_csv(file_path, encoding="utf-8", sep=",", low_memory=False)
         else:
