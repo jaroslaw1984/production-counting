@@ -154,61 +154,70 @@ def run_app():
         if df_plan is None or df_plan.empty:
             messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne.")
             return
-        
+
+        # config
         try:
             df_cfg = app_state.get("cfg")
-            if df_cfg is None:
-                df_cfg = load_profile_confing()
+            if df_cfg is None or df_cfg.empty:
+                df_cfg = load_profile_confing()  # upewnij się, że nazwa funkcji jest poprawna
                 app_state["cfg"] = df_cfg
         except Exception as e:
             messagebox.showerror("Błąd wczytywania konfiguracji", str(e))
             return
 
-        # tutaj dodaj logikę obliczania produkcji na podstawie df_plan i df_cfg
-        df_plan = app_state.get("df")
-        if df_plan is None or len(df_plan) == 0:
-            messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne.")
-            return
-        
-        # --- dalej robi merge i obliczenia ---
         df = df_plan.copy()
 
-        rename_map = {}
-        if "Profile" in df.columns: rename_map["Profile"] = "profile"
-        if "Side" in df.columns: rename_map["Side"] = "side"
-        if "Length" in df.columns: rename_map["Length"] = "length"
-        df = df.rename(columns=rename_map)
+        # wymagane kolumny po normalizacji
+        required = {"profile", "side"}
+        missing_cols = [c for c in required if c not in df.columns]
+        if missing_cols:
+            messagebox.showerror("Błąd danych", f"Brak kolumn: {missing_cols}\nSprawdź on_open_file().")
+            return
 
-        for col in ("profile", "side"):
-            if col not in df.columns:
-                messagebox.showerror("Błąd danych", f"Brak kolumny '{col}' w danych produkcyjnych.")
+        # normalizacja typów (na wszelki wypadek)
+        df["profile"] = df["profile"].astype("string").str.strip()
+        df["side"] = df["side"].astype("string").str.strip().str.replace(r"\.0$", "", regex=True).str.zfill(4)
+
+        # upewnij się, że config też ma poprawne typy i kolumny
+        for col in ("profile", "side", "setting_time"):
+            if col not in df_cfg.columns:
+                messagebox.showerror("Błąd configu", f"Brak kolumny '{col}' w profile_config.csv")
                 return
 
-        df["profile"] = df["profile"].astype("string")
-        df["side"] = df["side"].astype("string").str.zfill(4)
+        df_cfg = df_cfg.copy()
+        df_cfg["profile"] = df_cfg["profile"].astype("string").str.strip()
+        df_cfg["side"] = df_cfg["side"].astype("string").str.strip().str.zfill(4)
+        df_cfg["setting_time"] = pd.to_numeric(df_cfg["setting_time"], errors="coerce")
 
-        df = df.merge(df_cfg, on=["profile", "side"], how="left")
+        # merge
+        df = df.merge(df_cfg[["profile", "side", "setting_time"]], on=["profile", "side"], how="left")
 
         missing = df[df["setting_time"].isna()]
-        if missing.any():
-            missing_pairs = df.loc[missing, ["profile", "side"]].drop_duplicates().head(20)
+        if not missing.empty:
+            missing_pairs = missing[["profile", "side"]].drop_duplicates().head(20)
             messagebox.showerror(
-            "Brak w configu",
-            "Nie znaleziono setting_time dla:\n"
-            + missing_pairs.to_string(index=False)
-            + ("\n..." if missing_pairs.shape[0] >= 20 else "")
+                "Brak w configu",
+                "Nie znaleziono setting_time dla:\n"
+                + missing_pairs.to_string(index=False)
+                + ("\n..." if len(missing_pairs) >= 20 else "")
             )
             return
-    
-        # 0020 = obustronne
+
+        # Twoja reguła biznesowa (jeśli 0020 = brak zbrojenia)
         df.loc[df["side"] == "0020", "setting_time"] = 0
 
         total_setting_min = float(df["setting_time"].sum())
 
-        AVG_SPEED_M_PER_MIN = 25
+        # --- czas biegu (opcjonalnie) ---
+        # Jeśli metry są w target_value_p i unit_p == 'M'
+        AVG_SPEED_M_PER_MIN = 25.0
         total_run_min = 0.0
-        if "length_m" in df.columns:
-            df["length_m"] = pd.to_numeric(df["length_m"], errors="coerce").fillna(0)
+
+        if "target_value_p" in df.columns and "unit_p" in df.columns:
+            length_m = pd.to_numeric(df["target_value_p"], errors="coerce").fillna(0)
+            unit = df["unit_p"].astype("string").str.strip().str.upper()
+            length_m = length_m.where(unit == "M", 0)  # liczymy bieg tylko dla metrów
+            df["length_m"] = length_m
             df["run_time_min"] = df["length_m"] / AVG_SPEED_M_PER_MIN
             total_run_min = float(df["run_time_min"].sum())
 
@@ -217,21 +226,19 @@ def run_app():
         shifts = total_h / 8.0
 
         result_text = (
-            f"Config: {Path(app_state['cfg_path']).name}\n"
             f"Czas zbrojeń: {total_setting_min:.1f} min\n"
             f"Czas biegu:   {total_run_min:.1f} min\n"
             f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
             f"Zmiany (8h):   {shifts:.2f}\n"
         )
 
-        
         text.configure(state="normal")
         text.delete("1.0", "end")
         text.insert("end", result_text)
         text.configure(state="disabled")
         _upadate_placeholder_visibility()
 
-        # opcjonalnie: pokaż w treeview df z dołączonym setting_time
+        # Debug / opcjonalnie podgląd:
         # show_table_from_df(df)
     
     def detect_side_column(df: pd.DataFrame) -> str:
