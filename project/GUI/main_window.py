@@ -130,7 +130,7 @@ def run_app():
             encoding="utf-8",
             dtype={"profile": "string", "side": "string"},
         )
-        # na wszelki wypadek: usuń spacje z nazw kolumn
+        # na wszelki wypadek: usunięcie spacji z nazw kolumn
         df_cfg.columns = [col.strip().strip('"').rstrip(";") for col in df_cfg.columns]
 
         required = {"profile", "side", "setting_time"}
