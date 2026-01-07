@@ -328,17 +328,13 @@ def run_app():
                 side_col: "side",
             })
 
-            df["profile"] = df["profile"].astype("string").str.strip()
-            df["side"] = (
-                df["side"].astype("string")
+            df["profile"] = (
+                df["profile"]
+                .astype("string")
                 .str.strip()
-                .str.replace(r"\.0$", "", regex=True)
-                .str.zfill(4)
-)
-
-            # 6) normalizacja typów
-            df["profile"] = df["profile"].astype("string").str.strip()
-            df["side"] = df["side"].astype("string").str.strip().str.replace(r"\.0$", "", regex=True).str.zfill(4)
+                .str.split("-", n=1)
+                .str[0]
+            )
 
             app_state["df"] = df  # zapamiętaj
 
