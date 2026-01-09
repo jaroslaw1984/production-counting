@@ -9,6 +9,7 @@ from typing import Any
 # stała ścieżka do pliku konfiguracyjnego
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFING_PATH = BASE_DIR / "config" / "profile_config.csv"
+MACHINE_CONFIG_PATH = BASE_DIR / "config" / "machine_config.csv"
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
