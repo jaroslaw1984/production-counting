@@ -80,6 +80,18 @@ def run_app():
             except Exception:
                 pass
     
+    def show_text_view():
+        tf = app_state.get("table_frame")
+        if tf is not None:
+            try:
+                tf.destroy()
+            except Exception:
+                pass
+        app_state["table_frame"] = None
+        text.grid(row=0, column=0, sticky="nsew")
+        
+        
+    
     def show_table_from_df(df: pd.DataFrame):
         # 1) schowaj textbox
         # usuń poprzednią, jeśli istnieje
@@ -206,7 +218,10 @@ def run_app():
         # Twoja reguła biznesowa (jeśli 0020 = brak zbrojenia)
         df.loc[df["side"] == "0020", "setting_time"] = 0
 
-        total_setting_min = float(df["setting_time"].sum())
+        # zbrojenia liczone raz na unikalną konfigurację profile+side
+        unique_setups = df[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
+        total_setting_min = float(unique_setups["setting_time"].sum())
+
 
         # --- czas biegu (opcjonalnie) ---
         # Jeśli metry są w target_value_p i unit_p == 'M'
@@ -221,17 +236,34 @@ def run_app():
             df["run_time_min"] = df["length_m"] / AVG_SPEED_M_PER_MIN
             total_run_min = float(df["run_time_min"].sum())
 
+        unique_setups = df[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
+        
+        # realne zbrojenia: tylko tam, gdzie setting_time > 0
+        real_setups = unique_setups[unique_setups["setting_time"] > 0]
+        total_setting_min = float(real_setups["setting_time"].sum())
+        
         total_min = total_setting_min + total_run_min
         total_h = total_min / 60.0
         shifts = total_h / 8.0
 
         result_text = (
+            f"Pozycje w planie: {len(df)}\n"
+            f"Ilość zbrojeń profili: {len(real_setups)}\n"
             f"Czas zbrojeń: {total_setting_min:.1f} min\n"
             f"Czas biegu:   {total_run_min:.1f} min\n"
             f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
             f"Zmiany (8h):   {shifts:.2f}\n"
         )
+        
+        configs = real_setups[["profile", "side", "setting_time"]].sort_values(["profile", "side"])
 
+        result_text += "\nKonfiguracja czasów dla zbrojeń:\n" + configs.to_string(index=False)
+        
+        show_text_view()
+
+        print("CALC DONE", total_setting_min, total_run_min)
+        
+        
         text.configure(state="normal")
         text.delete("1.0", "end")
         text.insert("end", result_text)
