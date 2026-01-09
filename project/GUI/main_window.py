@@ -206,6 +206,39 @@ def run_app():
             return
 
         df = df_plan.copy()
+        
+        # --- machine config (speed) ---
+        try:
+            df_mc = app_state.get("machine_cfg")
+            if df_mc is None or df_mc.empty:
+                df_mc = load_machine_config()
+                app_state["machine_cfg"] = df_mc
+        except Exception as e:
+            messagebox.showerror("Błąd wczytywania machine_config.csv", str(e))
+            return
+
+        workplaces = df["workplace"].dropna().astype("string").str.strip().unique()
+        if len(workplaces) != 1:
+            messagebox.showerror(
+                "Błąd danych",
+                f"Plik powinien dotyczyć jednej maszyny, a wykryto: {list(workplaces)}"
+            )
+            return
+
+        workplace = workplaces[0]
+        row = df_mc.loc[df_mc["workplace"] == workplace]
+        if row.empty:
+            messagebox.showerror("Brak w machine_config", f"Nie znaleziono workplace='{workplace}' w machine_config.csv")
+            return
+
+        speed = float(row.iloc[0]["speed_m_per_min"])
+        if speed <= 0:
+            messagebox.showwarning(
+                "Prędkość = 0",
+                f"Maszyna '{workplace}' ma speed_m_per_min=0 w configu.\n"
+                "Nie mogę policzyć czasu biegu."
+            )
+            return
 
         # wymagane kolumny po normalizacji
         required = {"profile", "side"}
@@ -253,7 +286,7 @@ def run_app():
 
         # --- czas biegu (opcjonalnie) ---
         # Jeśli metry są w target_value_p i unit_p == 'M'
-        AVG_SPEED_M_PER_MIN = 25.0
+        AVG_SPEED_M_PER_MIN = speed  # z configu maszyny
         total_run_min = 0.0
 
         if "target_value_p" in df.columns and "unit_p" in df.columns:
@@ -275,8 +308,10 @@ def run_app():
         shifts = total_h / 8.0
 
         result_text = (
+            f"Stanowisko:   {workplace}\n"
             f"Pozycje w planie: {len(df)}\n"
             f"Ilość zbrojeń profili: {len(real_setups)}\n"
+            f"Prędkość:     {AVG_SPEED_M_PER_MIN:.2f} m/min\n"
             f"Czas zbrojeń: {total_setting_min:.1f} min\n"
             f"Czas biegu:   {total_run_min:.1f} min\n"
             f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
