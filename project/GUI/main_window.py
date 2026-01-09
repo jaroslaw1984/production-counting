@@ -131,7 +131,6 @@ def run_app():
         tf.grid_rowconfigure(0, weight=1)
         tf.grid_columnconfigure(0, weight=1)
 
-    MACHINE_CONFIG_PATH = BASE_DIR / "config" / "machine_config.csv"
 
     def load_machine_config() -> pd.DataFrame:
         if not MACHINE_CONFIG_PATH.exists():
