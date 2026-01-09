@@ -131,6 +131,33 @@ def run_app():
         tf.grid_rowconfigure(0, weight=1)
         tf.grid_columnconfigure(0, weight=1)
 
+    MACHINE_CONFIG_PATH = BASE_DIR / "config" / "machine_config.csv"
+
+    def load_machine_config() -> pd.DataFrame:
+        if not MACHINE_CONFIG_PATH.exists():
+            raise FileNotFoundError(f"Plik konfiguracyjny nie istnieje: {MACHINE_CONFIG_PATH}")
+
+        df_mc = pd.read_csv(MACHINE_CONFIG_PATH, sep=";", encoding="utf-8", dtype={"workplace": "string"})
+        df_mc.columns = [col.strip().strip('"').rstrip(";") for col in df_mc.columns]
+
+        required = {"workplace", "speed_m_per_min", "count_by_m"}
+        missing = required - set(df_mc.columns)
+        if missing:
+            raise ValueError(f"Brakujące kolumny w machine_config.csv: {missing}")
+
+        df_mc["workplace"] = df_mc["workplace"].astype("string").str.strip()
+        df_mc["speed_m_per_min"] = pd.to_numeric(df_mc["speed_m_per_min"], errors="coerce").fillna(0.0)
+        df_mc["count_by_m"] = pd.to_numeric(df_mc["count_by_m"], errors="coerce").fillna(0).astype(int)
+
+        # workplace powinno być unikalne
+        duplicates = df_mc.duplicated(subset=["workplace"], keep=False)
+        if duplicates.any():
+            dup_rows = df_mc[duplicates]
+            raise ValueError(f"Duplikaty w machine_config.csv (workplace musi być unikalne):\n{dup_rows}")
+
+        return df_mc
+
+    
     def load_profile_confing() -> pd.DataFrame:
         # spradz czy plik istnieje
         if not CONFING_PATH.exists():
