@@ -222,7 +222,7 @@ def run_app():
         speed_entry.pack(side="left", padx=10)
         customtkinter.CTkLabel(row1, text="m/min").pack(side="left")
 
-        row2 = customtkinter.CTkFrame(frame, fg_color="transparent")
+        row2 = customtkinter.CTkFrame(frame)
         row2.pack(fill="x", padx=10, pady=6)
 
         customtkinter.CTkRadioButton(
