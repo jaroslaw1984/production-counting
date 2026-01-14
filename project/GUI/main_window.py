@@ -414,6 +414,10 @@ def run_app():
 
         # Debug / opcjonalnie podgląd:
         # show_table_from_df(df)
+        
+    def save_machine_config(df_mc: pd.DataFrame, path: Path) -> None:
+        df_mc.to_csv(path, sep=";", index=False, encoding="utf-8")
+
     
     def detect_side_column(df: pd.DataFrame) -> str:
         """
