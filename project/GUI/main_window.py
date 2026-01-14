@@ -192,16 +192,30 @@ def run_app():
     def ask_calc_mode_popup(parent, workplace: str, default_speed: float, default_m_per_shift: float):
         result: Dict[str, Optional[Dict[str, Any]]] = {"value": None}
 
-        win = customtkinter.CTkToplevel(parent)
+        # ustaw wyraźne tło dla popupu (uniezależnienie od motywu)
+        win = customtkinter.CTkToplevel(parent, fg_color="#2b2b2b")
         win.title("Parametry przeliczenia produkcji")
         win.geometry("560x240")
-        win.transient(parent)
-        win.grab_set()
+        # don't use transient/grab for debug — they may interact with CTk/custom WM
+        try:
+            win.transient(parent)
+        except Exception:
+            pass
+        try:
+            win.grab_release()
+        except Exception:
+            pass
+        try:
+            win.lift()
+            win.attributes("-topmost", True)
+        except Exception:
+            pass
 
         customtkinter.CTkLabel(
             win,
             text=f"Stanowisko: {workplace}",
-            font=customtkinter.CTkFont(size=16, weight="bold")
+            font=customtkinter.CTkFont(size=16, weight="bold"),
+            text_color="#eaeaea",
         ).pack(padx=16, pady=(14, 6), anchor="w")
 
         mode_var = tk.StringVar(value="speed")
@@ -209,31 +223,31 @@ def run_app():
         frame = customtkinter.CTkFrame(win)
         frame.pack(fill="both", expand=True, padx=16, pady=10)
 
-        row1 = customtkinter.CTkFrame(frame, fg_color="transparent")
+        row1 = customtkinter.CTkFrame(frame)
         row1.pack(fill="x", padx=10, pady=(10, 6))
 
         customtkinter.CTkRadioButton(
             row1, text="Przelicz produkcję poprzez prędkość:",
-            variable=mode_var, value="speed"
+            variable=mode_var, value="speed", text_color="#eaeaea"
         ).pack(side="left")
 
         speed_var = tk.StringVar(value=str(default_speed))
         speed_entry = customtkinter.CTkEntry(row1, width=120, textvariable=speed_var)
         speed_entry.pack(side="left", padx=10)
-        customtkinter.CTkLabel(row1, text="m/min").pack(side="left")
+        customtkinter.CTkLabel(row1, text="m/min", text_color="#eaeaea").pack(side="left")
 
         row2 = customtkinter.CTkFrame(frame)
         row2.pack(fill="x", padx=10, pady=6)
 
         customtkinter.CTkRadioButton(
             row2, text="Przelicz produkcję poprzez metry na zmianę:",
-            variable=mode_var, value="shift"
+            variable=mode_var, value="shift", text_color="#eaeaea"
         ).pack(side="left")
 
         mshift_var = tk.StringVar(value=str(default_m_per_shift))
         mshift_entry = customtkinter.CTkEntry(row2, width=120, textvariable=mshift_var)
         mshift_entry.pack(side="left", padx=10)
-        customtkinter.CTkLabel(row2, text="m/zmianę").pack(side="left")
+        customtkinter.CTkLabel(row2, text="m/zmianę", text_color="#eaeaea").pack(side="left")
 
         def parse_float(s: str) -> float:
             return float(s.replace(",", ".").strip())
@@ -259,13 +273,15 @@ def run_app():
             result["value"] = None
             win.destroy()
 
-        btns = customtkinter.CTkFrame(win, fg_color="transparent")
+        btns = customtkinter.CTkFrame(win, fg_color="#2b2b2b")
         btns.pack(fill="x", padx=16, pady=(0, 14))
-        customtkinter.CTkButton(btns, text="Anuluj", command=on_cancel).pack(side="right")
-        customtkinter.CTkButton(btns, text="OK", command=on_ok).pack(side="right", padx=10)
+        customtkinter.CTkButton(btns, text="Anuluj", command=on_cancel, fg_color="#3a3a3a").pack(side="right")
+        customtkinter.CTkButton(btns, text="OK", command=on_ok, fg_color="#3a3a3a").pack(side="right", padx=10)
 
         parent.wait_window(win)
         return result["value"]
+
+    # note: fallback `tk` popup removed — use `ask_calc_mode_popup` (CTkToplevel)
 
     
     def calculate_production():
@@ -286,7 +302,7 @@ def run_app():
 
         df = df_plan.copy()
         
-        # --- machine config (speed) ---
+        # --- machine config (speed) ---    
         try:
             df_mc = app_state.get("machine_cfg")
             if df_mc is None or df_mc.empty:
@@ -296,28 +312,59 @@ def run_app():
             messagebox.showerror("Błąd wczytywania machine_config.csv", str(e))
             return
 
-        workplaces = df["workplace"].dropna().astype("string").str.strip().unique()
+        workplaces = df_plan["workplace"].dropna().astype("string").str.strip().unique()
         if len(workplaces) != 1:
-            messagebox.showerror(
-                "Błąd danych",
-                f"Plik powinien dotyczyć jednej maszyny, a wykryto: {list(workplaces)}"
-            )
+            messagebox.showerror("Wybór maszyny", f"W danych wykryto wiele maszyn: {list(workplaces)}")
             return
 
         workplace = workplaces[0]
         row = df_mc.loc[df_mc["workplace"] == workplace]
         if row.empty:
-            messagebox.showerror("Brak w machine_config", f"Nie znaleziono workplace='{workplace}' w machine_config.csv")
+            messagebox.showerror("Brak konfiguracji", f"Nie znaleziono workplace='{workplace}' w machine_config.csv")
             return
 
-        speed = float(row.iloc[0]["speed_m_per_min"])
-        if speed <= 0:
-            messagebox.showwarning(
-                "Prędkość = 0",
-                f"Maszyna '{workplace}' ma speed_m_per_min=0 w configu.\n"
-                "Nie mogę policzyć czasu biegu."
-            )
-            return
+        default_speed = float(row.iloc[0]["speed_m_per_min"])
+        default_m_per_shift = float(row.iloc[0]["count_by_m"])
+
+        # Use tkinter fallback popup for debugging visibility issues
+        choice = ask_calc_mode_popup(root, workplace, default_speed, default_m_per_shift)
+        if choice is None:
+            return  # Anuluj           
+
+        mask = df_mc["workplace"].astype("string").str.strip() == str(workplace).strip()
+
+        if choice["mode"] == "speed":
+            new_speed = float(choice["speed_m_per_min"])
+
+            if abs(new_speed - default_speed) > 1e-9:
+                if messagebox.askyesno(
+                    "Zapis do konfiguracji",
+                    f"Zmieniono prędkość dla {workplace}\n"
+                    f"Było: {default_speed}\n"
+                    f"Jest: {new_speed}\n\n"
+                    "Zapisać do machine_config.csv?"
+                ):
+                    df_mc.loc[mask, "speed_m_per_min"] = new_speed
+                    save_machine_config(df_mc, MACHINE_CONFIG_PATH)
+                    app_state["machine_cfg"] = df_mc
+                    default_speed = new_speed
+
+        else:  # tryb m/zmianę
+            new_mps = float(choice["m_per_shift"])
+
+            if abs(new_mps - default_m_per_shift) > 1e-9:
+                if messagebox.askyesno(
+                    "Zapis do konfiguracji",
+                    f"Zmieniono metry/zmianę dla {workplace}\n"
+                    f"Było: {default_m_per_shift}\n"
+                    f"Jest: {new_mps}\n\n"
+                    "Zapisać do machine_config.csv?"
+                ):
+                    df_mc.loc[mask, "count_by_m"] = new_mps
+                    save_machine_config(df_mc, MACHINE_CONFIG_PATH)
+                    app_state["machine_cfg"] = df_mc
+                    default_m_per_shift = new_mps
+
 
         # wymagane kolumny po normalizacji
         required = {"profile", "side"}
@@ -358,30 +405,42 @@ def run_app():
         # Twoja reguła biznesowa (jeśli 0020 = brak zbrojenia)
         df.loc[df["side"] == "0020", "setting_time"] = 0
 
-        # zbrojenia liczone raz na unikalną konfigurację profile+side
+        # --- METRY (suma długości do biegu) ---
+        # --- METRY (suma długości do biegu) ---
+        if "target_value_p" not in df.columns or "unit_p" not in df.columns:
+            messagebox.showerror("Błąd danych", "Brak kolumn target_value_p lub unit_p – nie mogę policzyć metrów.")
+            return
+
+        length_m = pd.to_numeric(df["target_value_p"], errors="coerce").fillna(0.0)
+        unit = df["unit_p"].astype("string").str.strip().str.upper()
+        df["length_m"] = length_m.where(unit == "M", 0.0)
+        total_m = float(df["length_m"].sum())
+
+        # zbrojenia: unikalna konfiguracja profile+side
         unique_setups = df[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
-        total_setting_min = float(unique_setups["setting_time"].sum())
-
-
-        # --- czas biegu (opcjonalnie) ---
-        # Jeśli metry są w target_value_p i unit_p == 'M'
-        AVG_SPEED_M_PER_MIN = speed  # z configu maszyny
-        total_run_min = 0.0
-
-        if "target_value_p" in df.columns and "unit_p" in df.columns:
-            length_m = pd.to_numeric(df["target_value_p"], errors="coerce").fillna(0)
-            unit = df["unit_p"].astype("string").str.strip().str.upper()
-            length_m = length_m.where(unit == "M", 0)  # liczymy bieg tylko dla metrów
-            df["length_m"] = length_m
-            df["run_time_min"] = df["length_m"] / AVG_SPEED_M_PER_MIN
-            total_run_min = float(df["run_time_min"].sum())
-
-        unique_setups = df[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
-        
-        # realne zbrojenia: tylko tam, gdzie setting_time > 0
         real_setups = unique_setups[unique_setups["setting_time"] > 0]
         total_setting_min = float(real_setups["setting_time"].sum())
-        
+
+        # --- CZAS BIEGU (wg trybu z popupu) ---
+        total_run_min = 0.0
+        run_mode_line = ""
+
+        if choice["mode"] == "speed":
+            speed = float(choice["speed_m_per_min"])
+            if speed <= 0:
+                messagebox.showwarning("Błąd", "Prędkość musi być > 0.")
+                return
+            total_run_min = total_m / speed
+            run_mode_line = f"Tryb biegu: {speed:.2f} m/min\n"
+        else:
+            m_per_shift = float(choice["m_per_shift"])
+            if m_per_shift <= 0:
+                messagebox.showwarning("Błąd", "Metry na zmianę muszą być > 0.")
+                return
+            shifts_needed = total_m / m_per_shift
+            total_run_min = shifts_needed * 8.0 * 60.0
+            run_mode_line = f"Tryb biegu: {m_per_shift:.0f} m/zmianę\n"
+
         total_min = total_setting_min + total_run_min
         total_h = total_min / 60.0
         shifts = total_h / 8.0
@@ -390,21 +449,20 @@ def run_app():
             f"Stanowisko:   {workplace}\n"
             f"Pozycje w planie: {len(df)}\n"
             f"Ilość zbrojeń profili: {len(real_setups)}\n"
-            f"Prędkość:     {AVG_SPEED_M_PER_MIN:.2f} m/min\n"
+            f"Suma metrów:  {total_m:.1f} m\n"
+            f"{run_mode_line}"
             f"Czas zbrojeń: {total_setting_min:.1f} min\n"
             f"Czas biegu:   {total_run_min:.1f} min\n"
             f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
-            f"Zmiany (8h):   {shifts:.2f}\n"
+            f"Zmiany (8h):  {shifts:.2f}\n"
         )
+
         
         configs = real_setups[["profile", "side", "setting_time"]].sort_values(["profile", "side"])
 
         result_text += "\nKonfiguracja czasów dla zbrojeń:\n" + configs.to_string(index=False)
         
         show_text_view()
-
-        print("CALC DONE", total_setting_min, total_run_min)
-        
         
         text.configure(state="normal")
         text.delete("1.0", "end")
