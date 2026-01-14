@@ -3,6 +3,7 @@ import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from project.Core.data_loader import load_excel
+from typing import Optional, Dict, Any
 from pathlib import Path
 from typing import Any
 
@@ -187,6 +188,85 @@ def run_app():
             raise ValueError(f"Duplikaty w pliku konfiguracyjnym (profile+side musi być unikalne):\n{dup_rows}")
 
         return df_cfg
+    
+    def ask_calc_mode_popup(parent, workplace: str, default_speed: float, default_m_per_shift: float):
+        result: Dict[str, Optional[Dict[str, Any]]] = {"value": None}
+
+        win = customtkinter.CTkToplevel(parent)
+        win.title("Parametry przeliczenia produkcji")
+        win.geometry("560x240")
+        win.transient(parent)
+        win.grab_set()
+
+        customtkinter.CTkLabel(
+            win,
+            text=f"Stanowisko: {workplace}",
+            font=customtkinter.CTkFont(size=16, weight="bold")
+        ).pack(padx=16, pady=(14, 6), anchor="w")
+
+        mode_var = tk.StringVar(value="speed")
+
+        frame = customtkinter.CTkFrame(win)
+        frame.pack(fill="both", expand=True, padx=16, pady=10)
+
+        row1 = customtkinter.CTkFrame(frame, fg_color="transparent")
+        row1.pack(fill="x", padx=10, pady=(10, 6))
+
+        customtkinter.CTkRadioButton(
+            row1, text="Przelicz produkcję poprzez prędkość:",
+            variable=mode_var, value="speed"
+        ).pack(side="left")
+
+        speed_var = tk.StringVar(value=str(default_speed))
+        speed_entry = customtkinter.CTkEntry(row1, width=120, textvariable=speed_var)
+        speed_entry.pack(side="left", padx=10)
+        customtkinter.CTkLabel(row1, text="m/min").pack(side="left")
+
+        row2 = customtkinter.CTkFrame(frame, fg_color="transparent")
+        row2.pack(fill="x", padx=10, pady=6)
+
+        customtkinter.CTkRadioButton(
+            row2, text="Przelicz produkcję poprzez metry na zmianę:",
+            variable=mode_var, value="shift"
+        ).pack(side="left")
+
+        mshift_var = tk.StringVar(value=str(default_m_per_shift))
+        mshift_entry = customtkinter.CTkEntry(row2, width=120, textvariable=mshift_var)
+        mshift_entry.pack(side="left", padx=10)
+        customtkinter.CTkLabel(row2, text="m/zmianę").pack(side="left")
+
+        def parse_float(s: str) -> float:
+            return float(s.replace(",", ".").strip())
+
+        def on_ok():
+            try:
+                if mode_var.get() == "speed":
+                    v = parse_float(speed_var.get())
+                    if v <= 0:
+                        raise ValueError("Prędkość musi być > 0.")
+                    result["value"] = {"mode": "speed", "speed_m_per_min": v}
+                else:
+                    v = parse_float(mshift_var.get())
+                    if v <= 0:
+                        raise ValueError("Metry na zmianę muszą być > 0.")
+                    result["value"] = {"mode": "shift", "m_per_shift": v}
+            except Exception as e:
+                messagebox.showerror("Błędna wartość", str(e))
+                return
+            win.destroy()
+
+        def on_cancel():
+            result["value"] = None
+            win.destroy()
+
+        btns = customtkinter.CTkFrame(win, fg_color="transparent")
+        btns.pack(fill="x", padx=16, pady=(0, 14))
+        customtkinter.CTkButton(btns, text="Anuluj", command=on_cancel).pack(side="right")
+        customtkinter.CTkButton(btns, text="OK", command=on_ok).pack(side="right", padx=10)
+
+        parent.wait_window(win)
+        return result["value"]
+
     
     def calculate_production():
         df_plan = app_state.get("df")
