@@ -1,4 +1,6 @@
+from random import choice
 import customtkinter
+from matplotlib.pylab import choice
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -139,15 +141,20 @@ def run_app():
 
         df_mc = pd.read_csv(MACHINE_CONFIG_PATH, sep=";", encoding="utf-8", dtype={"workplace": "string"})
         df_mc.columns = [col.strip().strip('"').rstrip(";") for col in df_mc.columns]
+        
+        df_mc.columns = df_mc.columns.str.strip()
+        if "machine" in df_mc.columns and "workplace" not in df_mc.columns:
+            df_mc = df_mc.rename(columns={"machine": "workplace"})
 
-        required = {"workplace", "speed_m_per_min", "count_by_m"}
+
+        required = {"workplace", "speed_m_per_min", "count_by_shift"}
         missing = required - set(df_mc.columns)
         if missing:
             raise ValueError(f"Brakujące kolumny w machine_config.csv: {missing}")
 
         df_mc["workplace"] = df_mc["workplace"].astype("string").str.strip()
         df_mc["speed_m_per_min"] = pd.to_numeric(df_mc["speed_m_per_min"], errors="coerce").fillna(0.0)
-        df_mc["count_by_m"] = pd.to_numeric(df_mc["count_by_m"], errors="coerce").fillna(0).astype(int)
+        df_mc["count_by_shift"] = pd.to_numeric(df_mc["count_by_shift"], errors="coerce").fillna(0).astype(int)
 
         # workplace powinno być unikalne
         duplicates = df_mc.duplicated(subset=["workplace"], keep=False)
@@ -189,7 +196,7 @@ def run_app():
 
         return df_cfg
     
-    def ask_calc_mode_popup(parent, workplace: str, default_speed: float, default_m_per_shift: float):
+    def ask_calc_mode_popup(parent, workplace: str, default_speed: float, default_pieces_per_shift: int):
         result: Dict[str, Optional[Dict[str, Any]]] = {"value": None}
 
         # ustaw wyraźne tło dla popupu (uniezależnienie od motywu)
@@ -240,14 +247,15 @@ def run_app():
         row2.pack(fill="x", padx=10, pady=6)
 
         customtkinter.CTkRadioButton(
-            row2, text="Przelicz produkcję poprzez metry na zmianę:",
+            row2, text="Przelicz produkcję poprzez sztuki na zmianę:",
             variable=mode_var, value="shift", text_color="#eaeaea"
         ).pack(side="left")
 
-        mshift_var = tk.StringVar(value=str(default_m_per_shift))
-        mshift_entry = customtkinter.CTkEntry(row2, width=120, textvariable=mshift_var)
-        mshift_entry.pack(side="left", padx=10)
-        customtkinter.CTkLabel(row2, text="m/zmianę", text_color="#eaeaea").pack(side="left")
+        pshift_var = tk.StringVar(value=str(default_pieces_per_shift))
+        pshift_entry = customtkinter.CTkEntry(row2, width=120, textvariable=pshift_var)
+        pshift_entry.pack(side="left", padx=10)
+        customtkinter.CTkLabel(row2, text="szt./zmianę", text_color="#eaeaea").pack(side="left")
+
 
         def parse_float(s: str) -> float:
             return float(s.replace(",", ".").strip())
@@ -260,10 +268,11 @@ def run_app():
                         raise ValueError("Prędkość musi być > 0.")
                     result["value"] = {"mode": "speed", "speed_m_per_min": v}
                 else:
-                    v = parse_float(mshift_var.get())
+                    v = int(parse_float(pshift_var.get()))
                     if v <= 0:
-                        raise ValueError("Metry na zmianę muszą być > 0.")
-                    result["value"] = {"mode": "shift", "m_per_shift": v}
+                        raise ValueError("Sztuki na zmianę muszą być > 0.")
+                    result["value"] = {"mode": "shift", "pieces_per_shift": v}
+
             except Exception as e:
                 messagebox.showerror("Błędna wartość", str(e))
                 return
@@ -324,10 +333,12 @@ def run_app():
             return
 
         default_speed = float(row.iloc[0]["speed_m_per_min"])
-        default_m_per_shift = float(row.iloc[0]["count_by_m"])
+        default_pieces_per_shift = int(row.iloc[0]["count_by_shift"])
+
 
         # Use tkinter fallback popup for debugging visibility issues
-        choice = ask_calc_mode_popup(root, workplace, default_speed, default_m_per_shift)
+        choice = ask_calc_mode_popup(root, workplace, default_speed, default_pieces_per_shift)
+
         if choice is None:
             return  # Anuluj           
 
@@ -349,21 +360,22 @@ def run_app():
                     app_state["machine_cfg"] = df_mc
                     default_speed = new_speed
 
-        else:  # tryb m/zmianę
-            new_mps = float(choice["m_per_shift"])
+                else:  # tryb szt./zmianę
+                    new_pps = int(choice["pieces_per_shift"])
 
-            if abs(new_mps - default_m_per_shift) > 1e-9:
-                if messagebox.askyesno(
-                    "Zapis do konfiguracji",
-                    f"Zmieniono metry/zmianę dla {workplace}\n"
-                    f"Było: {default_m_per_shift}\n"
-                    f"Jest: {new_mps}\n\n"
-                    "Zapisać do machine_config.csv?"
-                ):
-                    df_mc.loc[mask, "count_by_m"] = new_mps
-                    save_machine_config(df_mc, MACHINE_CONFIG_PATH)
-                    app_state["machine_cfg"] = df_mc
-                    default_m_per_shift = new_mps
+                    if new_pps != default_pieces_per_shift:
+                        if messagebox.askyesno(
+                            "Zapis do konfiguracji",
+                            f"Zmieniono szt./zmianę dla {workplace}\n"
+                            f"Było: {default_pieces_per_shift}\n"
+                            f"Jest: {new_pps}\n\n"
+                            "Zapisać do machine_config.csv?"
+                        ):
+                            df_mc.loc[mask, "count_by_shift"] = new_pps
+                            save_machine_config(df_mc, MACHINE_CONFIG_PATH)
+                            app_state["machine_cfg"] = df_mc
+                            default_pieces_per_shift = new_pps
+
 
 
         # wymagane kolumny po normalizacji
@@ -415,6 +427,10 @@ def run_app():
         unit = df["unit_p"].astype("string").str.strip().str.upper()
         df["length_m"] = length_m.where(unit == "M", 0.0)
         total_m = float(df["length_m"].sum())
+        
+        pieces = pd.to_numeric(df["target_value_s"], errors="coerce").fillna(0.0)
+        total_pieces = float(pieces.sum())
+
 
         # zbrojenia: unikalna konfiguracja profile+side
         unique_setups = df[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
@@ -433,14 +449,19 @@ def run_app():
             total_run_min = total_m / speed
             run_mode_line = f"Tryb biegu: {speed:.2f} m/min\n"
         else:
-            m_per_shift = float(choice["m_per_shift"])
-            if m_per_shift <= 0:
-                messagebox.showwarning("Błąd", "Metry na zmianę muszą być > 0.")
+            pieces_per_shift = int(choice["pieces_per_shift"])
+            if pieces_per_shift <= 0:
+                messagebox.showwarning("Błąd", "Sztuki na zmianę muszą być > 0.")
                 return
-            shifts_needed = total_m / m_per_shift
-            total_run_min = shifts_needed * 8.0 * 60.0
-            run_mode_line = f"Tryb biegu: {m_per_shift:.0f} m/zmianę\n"
+            if total_pieces <= 0:
+                messagebox.showwarning("Błąd danych", "Suma sztuk (Docelowa wartość (S)) wynosi 0 – nie mogę policzyć trybu shift.")
+                return
 
+            shifts_needed = total_pieces / pieces_per_shift
+            total_run_min = shifts_needed * 8.0 * 60.0
+            run_mode_line = f"Tryb biegu: {pieces_per_shift} szt./zmianę\n"
+
+        # podsumowanie
         total_min = total_setting_min + total_run_min
         total_h = total_min / 60.0
         shifts = total_h / 8.0
@@ -450,6 +471,7 @@ def run_app():
             f"Pozycje w planie: {len(df)}\n"
             f"Ilość zbrojeń profili: {len(real_setups)}\n"
             f"Suma metrów:  {total_m:.1f} m\n"
+            f"Suma sztuk:   {total_pieces:.0f} szt.\n"
             f"{run_mode_line}"
             f"Czas zbrojeń: {total_setting_min:.1f} min\n"
             f"Czas biegu:   {total_run_min:.1f} min\n"
@@ -522,7 +544,7 @@ def run_app():
             if ext in (".xlsx", ".xls"):
                 df_raw = pd.read_excel(file_path, engine="openpyxl", header=1)
             elif ext == ".csv":
-                df_raw = pd.read_csv(file_path, encoding="utf-8", sep=",", low_memory=False)
+                df_raw = pd.read_csv(file_path, encoding="utf-8-sig", sep=",", low_memory=False)
             else:
                 messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz .xlsx, .xls lub .csv")
                 return
