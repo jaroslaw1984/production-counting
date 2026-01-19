@@ -476,6 +476,7 @@ def run_app():
             f"Czas zbrojeń: {total_setting_min:.1f} min\n"
             f"Czas biegu:   {total_run_min:.1f} min\n"
             f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
+            f"--------------------------------\n"
             f"Zmiany (8h):  {shifts:.2f}\n"
         )
 
