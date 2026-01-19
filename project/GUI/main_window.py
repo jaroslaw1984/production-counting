@@ -1,6 +1,4 @@
-from random import choice
 import customtkinter
-from matplotlib.pylab import choice
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -360,21 +358,21 @@ def run_app():
                     app_state["machine_cfg"] = df_mc
                     default_speed = new_speed
 
-                else:  # tryb szt./zmianę
-                    new_pps = int(choice["pieces_per_shift"])
+        elif choice["mode"] == "shift":  # tryb szt./zmianę
+            new_pps = int(choice["pieces_per_shift"])
 
-                    if new_pps != default_pieces_per_shift:
-                        if messagebox.askyesno(
-                            "Zapis do konfiguracji",
-                            f"Zmieniono szt./zmianę dla {workplace}\n"
-                            f"Było: {default_pieces_per_shift}\n"
-                            f"Jest: {new_pps}\n\n"
-                            "Zapisać do machine_config.csv?"
-                        ):
-                            df_mc.loc[mask, "count_by_shift"] = new_pps
-                            save_machine_config(df_mc, MACHINE_CONFIG_PATH)
-                            app_state["machine_cfg"] = df_mc
-                            default_pieces_per_shift = new_pps
+            if new_pps != default_pieces_per_shift:
+                if messagebox.askyesno(
+                    "Zapis do konfiguracji",
+                    f"Zmieniono szt./zmianę dla {workplace}\n"
+                    f"Było: {default_pieces_per_shift}\n"
+                    f"Jest: {new_pps}\n\n"
+                    "Zapisać do machine_config.csv?"
+                ):
+                    df_mc.loc[mask, "count_by_shift"] = new_pps
+                    save_machine_config(df_mc, MACHINE_CONFIG_PATH)
+                    app_state["machine_cfg"] = df_mc
+                    default_pieces_per_shift = new_pps
 
 
 
