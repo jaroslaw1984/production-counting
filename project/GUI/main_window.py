@@ -249,8 +249,7 @@ def run_app():
         # ustaw wyraźne tło dla popupu (uniezależnienie od motywu)
         win = customtkinter.CTkToplevel(parent, fg_color="#2b2b2b")
         win.title("Parametry przeliczenia produkcji")
-        win.geometry("560x240")
-        # don't use transient/grab for debug — they may interact with CTk/custom WM
+
         try:
             win.transient(parent)
         except Exception:
@@ -277,24 +276,37 @@ def run_app():
         frame = customtkinter.CTkFrame(win)
         frame.pack(fill="both", expand=True, padx=16, pady=10)
 
+        # --- wiersze z opcjami ---
+        # prędkość
         row1 = customtkinter.CTkFrame(frame)
         row1.pack(fill="x", padx=10, pady=(10, 6))
         
-        row_cal = customtkinter.CTkFrame(frame)
-        row_cal.pack(fill="x", padx=10, pady=6)
-
-        customtkinter.CTkLabel(row_cal, text="Kalendarz:", text_color="#eaeaea").pack(side="left")
-
-        customtkinter.CTkRadioButton(
-            row_cal, text="dni robocze", variable=calendar_var, value="workdays", text_color="#eaeaea"
-        ).pack(side="left", padx=10)
-
-        customtkinter.CTkRadioButton(
-            row_cal, text="dni robocze + weekendy", variable=calendar_var, value="all", text_color="#eaeaea"
-        ).pack(side="left", padx=10)
+        # radio + entry szt./zmianę
+        row2 = customtkinter.CTkFrame(frame)
+        row2.pack(fill="x", padx=10, pady=6)
         
+        # odstęp wizualny między sekcjami
+        spacer = customtkinter.CTkFrame(frame, height=12, fg_color="transparent")
+        spacer.pack(fill="x")
+
+        # radio + entry szt./zmianę
+        row_cal = customtkinter.CTkFrame(frame)
+        row_cal.pack(fill="x", padx=10, pady=(20, 6))
+        
+        # radio dni robocze / weekendy
         row_start = customtkinter.CTkFrame(frame)
         row_start.pack(fill="x", padx=10, pady=6)
+        
+        # --- tryb przeliczenia ---
+        customtkinter.CTkRadioButton(
+            row2, text="Przelicz produkcję poprzez sztuki na zmianę:",
+            variable=mode_var, value="shift", text_color="#eaeaea"
+        ).pack(side="left")
+
+        pshift_var = tk.StringVar(value=str(default_pieces_per_shift))
+        pshift_entry = customtkinter.CTkEntry(row2, width=120, textvariable=pshift_var)
+        pshift_entry.pack(side="left", padx=10)
+        customtkinter.CTkLabel(row2, text="szt./zmianę", text_color="#eaeaea").pack(side="left")
 
         customtkinter.CTkLabel(row_start, text="Start od zmiany:", text_color="#eaeaea").pack(side="left")
 
@@ -310,7 +322,7 @@ def run_app():
             row_start, text="3", variable=start_shift_var, value=3, text_color="#eaeaea"
         ).pack(side="left", padx=10)
 
-
+        # --- tryb przeliczenia ---
         customtkinter.CTkRadioButton(
             row1, text="Przelicz produkcję poprzez prędkość:",
             variable=mode_var, value="speed", text_color="#eaeaea"
@@ -321,21 +333,6 @@ def run_app():
         speed_entry.pack(side="left", padx=10)
         customtkinter.CTkLabel(row1, text="m/min", text_color="#eaeaea").pack(side="left")
 
-        row2 = customtkinter.CTkFrame(frame)
-        row2.pack(fill="x", padx=10, pady=6)
-
-        customtkinter.CTkRadioButton(
-            row2, text="Przelicz produkcję poprzez sztuki na zmianę:",
-            variable=mode_var, value="shift", text_color="#eaeaea"
-        ).pack(side="left")
-
-        pshift_var = tk.StringVar(value=str(default_pieces_per_shift))
-        pshift_entry = customtkinter.CTkEntry(row2, width=120, textvariable=pshift_var)
-        pshift_entry.pack(side="left", padx=10)
-        customtkinter.CTkLabel(row2, text="szt./zmianę", text_color="#eaeaea").pack(side="left")
-        
-        row_cal = customtkinter.CTkFrame(frame)
-        row_cal.pack(fill="x", padx=10, pady=6)
 
         customtkinter.CTkLabel(row_cal, text="Kalendarz:", text_color="#eaeaea").pack(side="left")
 
@@ -722,7 +719,6 @@ def run_app():
         # popup + pokazanie w Treeview (jak u Ciebie)
         popup = customtkinter.CTkToplevel(root)
         popup.title("Wczytano dane")
-        popup.geometry("480x180")
         popup.transient(root)
         popup.grab_set()
 
