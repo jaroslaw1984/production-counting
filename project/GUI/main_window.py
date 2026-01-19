@@ -1,6 +1,8 @@
 import customtkinter
 import pandas as pd
 import tkinter as tk
+import math
+from datetime import date, timedelta
 from tkinter import filedialog, messagebox, ttk
 from project.Core.data_loader import load_excel
 from typing import Optional, Dict, Any
@@ -11,6 +13,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFING_PATH = BASE_DIR / "config" / "profile_config.csv"
 MACHINE_CONFIG_PATH = BASE_DIR / "config" / "machine_config.csv"
+SHIFTS_PER_DAY = 3  
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
@@ -133,6 +136,48 @@ def run_app():
         tf.grid_columnconfigure(0, weight=1)
 
 
+    # licze dni tygodnia z niestandardowym zaokrągleniem
+    def pl_weekday_name(d: date) -> str:
+        names = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"]
+        return names[d.weekday()]
+
+    def round_shifts_custom(shifts: float) -> int:
+        """4.5 -> 4 (w dół), 4.7 -> 5 (w górę)."""
+        frac = shifts - math.floor(shifts)
+        return math.floor(shifts) if frac <= 0.5 else math.ceil(shifts)
+
+    def next_workday(d: date) -> date:
+        d += timedelta(days=1)
+        while d.weekday() >= 5:  # 5=sob, 6=nd
+            d += timedelta(days=1)
+        return d
+
+    def add_shifts(start_date: date, start_shift: int, shifts_count: int, include_weekends: bool) -> tuple[date, int]:
+        """
+        Zwraca (end_date, end_shift) po wykonaniu shifts_count zmian,
+        startując od start_date i start_shift (1..SHIFTS_PER_DAY).
+        """
+        if shifts_count <= 0:
+            return start_date, start_shift
+
+        d = start_date
+        s = start_shift
+
+        # koniec jest na shifts_count-tej zmianie, więc przesuwamy slot shifts_count-1 razy
+        moves = shifts_count - 1
+
+        for _ in range(moves):
+            s += 1
+            if s > SHIFTS_PER_DAY:
+                s = 1
+                if include_weekends:
+                    d += timedelta(days=1)
+                else:
+                    d = next_workday(d)
+
+        return d, s
+
+
     def load_machine_config() -> pd.DataFrame:
         if not MACHINE_CONFIG_PATH.exists():
             raise FileNotFoundError(f"Plik konfiguracyjny nie istnieje: {MACHINE_CONFIG_PATH}")
@@ -196,6 +241,10 @@ def run_app():
     
     def ask_calc_mode_popup(parent, workplace: str, default_speed: float, default_pieces_per_shift: int):
         result: Dict[str, Optional[Dict[str, Any]]] = {"value": None}
+        
+        # dni roboczoe lub weekend /kalendarz
+        calendar_var = tk.StringVar(value="workdays")
+        start_shift_var = tk.IntVar(value=1) 
 
         # ustaw wyraźne tło dla popupu (uniezależnienie od motywu)
         win = customtkinter.CTkToplevel(parent, fg_color="#2b2b2b")
@@ -230,6 +279,37 @@ def run_app():
 
         row1 = customtkinter.CTkFrame(frame)
         row1.pack(fill="x", padx=10, pady=(10, 6))
+        
+        row_cal = customtkinter.CTkFrame(frame)
+        row_cal.pack(fill="x", padx=10, pady=6)
+
+        customtkinter.CTkLabel(row_cal, text="Kalendarz:", text_color="#eaeaea").pack(side="left")
+
+        customtkinter.CTkRadioButton(
+            row_cal, text="dni robocze", variable=calendar_var, value="workdays", text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkRadioButton(
+            row_cal, text="dni robocze + weekendy", variable=calendar_var, value="all", text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+        
+        row_start = customtkinter.CTkFrame(frame)
+        row_start.pack(fill="x", padx=10, pady=6)
+
+        customtkinter.CTkLabel(row_start, text="Start od zmiany:", text_color="#eaeaea").pack(side="left")
+
+        customtkinter.CTkRadioButton(
+            row_start, text="1", variable=start_shift_var, value=1, text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkRadioButton(
+            row_start, text="2", variable=start_shift_var, value=2, text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkRadioButton(
+            row_start, text="3", variable=start_shift_var, value=3, text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
 
         customtkinter.CTkRadioButton(
             row1, text="Przelicz produkcję poprzez prędkość:",
@@ -253,6 +333,20 @@ def run_app():
         pshift_entry = customtkinter.CTkEntry(row2, width=120, textvariable=pshift_var)
         pshift_entry.pack(side="left", padx=10)
         customtkinter.CTkLabel(row2, text="szt./zmianę", text_color="#eaeaea").pack(side="left")
+        
+        row_cal = customtkinter.CTkFrame(frame)
+        row_cal.pack(fill="x", padx=10, pady=6)
+
+        customtkinter.CTkLabel(row_cal, text="Kalendarz:", text_color="#eaeaea").pack(side="left")
+
+        customtkinter.CTkRadioButton(
+            row_cal, text="dni robocze", variable=calendar_var, value="workdays", text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkRadioButton(
+            row_cal, text="dni robocze + weekendy", variable=calendar_var, value="all", text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
 
 
         def parse_float(s: str) -> float:
@@ -264,12 +358,22 @@ def run_app():
                     v = parse_float(speed_var.get())
                     if v <= 0:
                         raise ValueError("Prędkość musi być > 0.")
-                    result["value"] = {"mode": "speed", "speed_m_per_min": v}
+                    result["value"] = {
+                        "mode": "speed",
+                        "speed_m_per_min": v,
+                        "calendar": calendar_var.get(),
+                        "start_shift": int(start_shift_var.get()),
+                        }
                 else:
                     v = int(parse_float(pshift_var.get()))
                     if v <= 0:
                         raise ValueError("Sztuki na zmianę muszą być > 0.")
-                    result["value"] = {"mode": "shift", "pieces_per_shift": v}
+                    result["value"] = {
+                        "mode": "shift",
+                        "pieces_per_shift": v,
+                        "calendar": calendar_var.get(),
+                        "start_shift": int(start_shift_var.get()),
+                        }
 
             except Exception as e:
                 messagebox.showerror("Błędna wartość", str(e))
@@ -463,6 +567,21 @@ def run_app():
         total_min = total_setting_min + total_run_min
         total_h = total_min / 60.0
         shifts = total_h / 8.0
+        
+        calendar_mode = choice.get("calendar", "workdays")
+        include_weekends = (calendar_mode == "all")
+        start_shift = int(choice.get("start_shift", 1))
+
+        rounded_shifts = round_shifts_custom(shifts)
+
+        end_d, end_s = add_shifts(
+            start_date=date.today(),
+            start_shift=start_shift,
+            shifts_count=rounded_shifts,
+            include_weekends=include_weekends
+        )
+        
+        end_line = f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s})\n"
 
         result_text = (
             f"Stanowisko:   {workplace}\n"
@@ -476,6 +595,7 @@ def run_app():
             f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
             f"--------------------------------\n"
             f"Zmiany (8h):  {shifts:.2f}\n"
+            f"{end_line}"
         )
 
         
