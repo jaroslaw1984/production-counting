@@ -1,8 +1,9 @@
+from unittest import result
 import customtkinter
 import pandas as pd
 import tkinter as tk
 import math
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
 from project.Core.data_loader import load_excel
 from typing import Optional, Dict, Any
@@ -245,6 +246,11 @@ def run_app():
         # dni roboczoe lub weekend /kalendarz
         calendar_var = tk.StringVar(value="workdays")
         start_shift_var = tk.IntVar(value=1) 
+        
+        #dni tygodnia / kalendarz
+        start_mode_var = tk.StringVar(value="today")  # "today" albo "date"
+        start_date_var = tk.StringVar(value=date.today().isoformat())
+    
 
         # ustaw wyraźne tło dla popupu (uniezależnienie od motywu)
         win = customtkinter.CTkToplevel(parent, fg_color="#2b2b2b")
@@ -296,6 +302,26 @@ def run_app():
         # radio dni robocze / weekendy
         row_start = customtkinter.CTkFrame(frame)
         row_start.pack(fill="x", padx=10, pady=6)
+        
+        # radio data startu
+        row_startdate = customtkinter.CTkFrame(frame)
+        row_startdate.pack(fill="x", padx=10, pady=6)
+        
+        # --- tryb startu daty ---
+        customtkinter.CTkLabel(row_startdate, text="Start liczenia:", text_color="#eaeaea").pack(side="left")
+
+        customtkinter.CTkRadioButton(
+            row_startdate, text="od dziś", variable=start_mode_var, value="today", text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
+        customtkinter.CTkRadioButton(
+            row_startdate, text="od daty", variable=start_mode_var, value="date", text_color="#eaeaea"
+        ).pack(side="left", padx=10)
+
+        start_date_entry = customtkinter.CTkEntry(row_startdate, width=130, textvariable=start_date_var)
+        start_date_entry.pack(side="left", padx=10)
+
+        customtkinter.CTkLabel(row_startdate, text="(YYYY-MM-DD)", text_color="#aaaaaa").pack(side="left")        
         
         # --- tryb przeliczenia ---
         customtkinter.CTkRadioButton(
@@ -361,6 +387,9 @@ def run_app():
                         "calendar": calendar_var.get(),
                         "start_shift": int(start_shift_var.get()),
                         }
+                    result["value"]["start_mode"] = start_mode_var.get()
+                    result["value"]["start_date"] = start_date_var.get()
+                    result["value"]["start_shift"] = int(start_shift_var.get())
                 else:
                     v = int(parse_float(pshift_var.get()))
                     if v <= 0:
@@ -371,6 +400,9 @@ def run_app():
                         "calendar": calendar_var.get(),
                         "start_shift": int(start_shift_var.get()),
                         }
+                    result["value"]["start_mode"] = start_mode_var.get()
+                    result["value"]["start_date"] = start_date_var.get()
+                    result["value"]["start_shift"] = int(start_shift_var.get())
 
             except Exception as e:
                 messagebox.showerror("Błędna wartość", str(e))
@@ -571,12 +603,25 @@ def run_app():
 
         rounded_shifts = round_shifts_custom(shifts)
 
+        start_shift = int(choice.get("start_shift", 1))
+        start_mode = choice.get("start_mode", "today")
+        start_date_str = choice.get("start_date", date.today().isoformat())
+
+        if start_mode == "date":
+            try:
+                start_d = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                messagebox.showerror("Błąd daty", "Podaj datę w formacie YYYY-MM-DD.")
+                return
+        else:
+            start_d = date.today()
+
         end_d, end_s = add_shifts(
-            start_date=date.today(),
+            start_date=start_d,
             start_shift=start_shift,
             shifts_count=rounded_shifts,
             include_weekends=include_weekends
-        )
+)
         
         end_line = f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s})\n"
 
@@ -592,6 +637,7 @@ def run_app():
             f"Razem:        {total_min:.1f} min = {total_h:.2f} h\n"
             f"--------------------------------\n"
             f"Zmiany (8h):  {shifts:.2f}\n"
+            f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}\n"
             f"{end_line}"
         )
 
