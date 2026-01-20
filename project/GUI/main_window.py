@@ -549,16 +549,29 @@ def run_app():
         df.loc[df["side"] == "0020", "setting_time"] = 0
 
         # --- METRY (suma długości do biegu) ---
-        # --- METRY (suma długości do biegu) ---
         if "target_value_p" not in df.columns or "unit_p" not in df.columns:
             messagebox.showerror("Błąd danych", "Brak kolumn target_value_p lub unit_p – nie mogę policzyć metrów.")
             return
 
-        length_m = pd.to_numeric(df["target_value_p"], errors="coerce").fillna(0.0)
+        # --- METRY (pozostałe do wykonania) ---
+        target_p = pd.to_numeric(df["target_value_p"], errors="coerce").fillna(0.0)
+        good_p = pd.to_numeric(df.get("good_qty_p", 0), errors="coerce").fillna(0.0)
+
         unit = df["unit_p"].astype("string").str.strip().str.upper()
-        df["length_m"] = length_m.where(unit == "M", 0.0)
+
+        # domyślnie: cały target
+        remaining_p = target_p.copy()
+
+        # jeśli zlecenie rozpoczęte → odejmij wykonaną część
+        mask_started = good_p > 0
+        remaining_p.loc[mask_started] = (target_p - good_p).clip(lower=0.0)
+
+        # tylko metry (P w metrach)
+        df["length_m"] = remaining_p.where(unit == "M", 0.0)
+
         total_m = float(df["length_m"].sum())
-        
+
+        # --- SZTUKI (suma sztuk do wykonania) ---
         pieces = pd.to_numeric(df["target_value_s"], errors="coerce").fillna(0.0)
         total_pieces = float(pieces.sum())
 
@@ -711,9 +724,31 @@ def run_app():
                 messagebox.showerror("Błąd", "Nieobsługiwany format pliku. Wybierz .xlsx, .xls lub .csv")
                 return
 
-            # 1) czyść nagłówki
+            # 1) czyść nagłówki (strip + normalizacja spacji)
+            df_raw.columns = [
+                " ".join(str(c).replace("\xa0", " ").strip().split())
+                for c in df_raw.columns
+]
+            
+            def find_col(df_cols, *candidates):
+                cols_norm = {str(c).strip(): str(c) for c in df_cols}
+                for cand in candidates:
+                    # dokładne dopasowanie po strip
+                    for k, original in cols_norm.items():
+                        if k == cand.strip():
+                            return original
+                return None
+                        
             df_raw.columns = [str(c).strip() for c in df_raw.columns]
-
+            
+            good_p_col = find_col(
+                df_raw.columns,
+                "Ilość dobrej produkcji (P)",
+                "Ilość dobrej produkcji(P)",
+                "Ilość dobrej produkcji P",
+            )
+            
+            # mapowanie kolumn na podstawie możliwych nazw
             # 2) wybierz stałe kolumny
             needed_fixed = [
                 "Stanowisko robocze",
@@ -724,6 +759,10 @@ def run_app():
                 "Jednostka (S)",
                 "Rodzaj zlecenia",
             ]
+
+            # kolumna wykonania jest opcjonalna – jeśli ją znajdziemy, to ją dokładamy
+            if good_p_col:
+                needed_fixed.insert(3, good_p_col)
 
             zlecenie_cols = [c for c in df_raw.columns if c.startswith("Zlecenie")]
             if len(zlecenie_cols) < 2:
@@ -736,8 +775,11 @@ def run_app():
 
             # teraz zostaw tylko potrzebne kolumny + side_col
             df = df[needed_fixed + [side_col]].copy()
+            
+           
 
-            df = df.rename(columns={
+
+            rename_map = {
                 "Stanowisko robocze": "workplace",
                 "Artykuł": "profile",
                 "Docelowa wartość (P)": "target_value_p",
@@ -746,7 +788,32 @@ def run_app():
                 "Jednostka (S)": "unit_s",
                 "Rodzaj zlecenia": "order_type",
                 side_col: "side",
-            })
+            }
+            if good_p_col:
+                rename_map[good_p_col] = "good_qty_p"
+
+            df = df.rename(columns=rename_map)
+            df["good_qty_p"] = pd.to_numeric(df["good_qty_p"], errors="coerce").fillna(0.0)
+            
+            
+            if "good_qty_p" in df.columns:
+                df["good_qty_p"] = (
+                    df["good_qty_p"]
+                    .astype(str)
+                    .str.replace("\xa0", "", regex=False)  # twarda spacja
+                    .str.replace(" ", "", regex=False)
+                    .str.replace(",", ".", regex=False)
+                )
+                df["good_qty_p"] = pd.to_numeric(df["good_qty_p"], errors="coerce").fillna(0.0)
+            else:
+                df["good_qty_p"] = 0.0
+
+
+            # fallback gdy jednak nie było kolumny wykonania
+            if "good_qty_p" not in df.columns:
+                df["good_qty_p"] = 0.0
+
+
 
             df["profile"] = (
                 df["profile"]
