@@ -874,17 +874,19 @@ def run_app():
         _upadate_placeholder_visibility()
 
 # 6) Przykładowe przyciski w lewym panelu
+    download_machine_btn = customtkinter.CTkButton(left, text="Wczytaj maszyny")
+    download_machine_btn.grid(row=0, column=0, pady=(0, 10), sticky="ew")
     load_machine_btn = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
-    load_machine_btn.grid(row=0, column=0, pady=(0, 10), sticky="ew")
+    load_machine_btn.grid(row=1, column=0, pady=(0, 10), sticky="ew")
     count_production_btn = customtkinter.CTkButton(left, text="Przelicz produkcję", command=calculate_production)
-    count_production_btn.grid(row=1, column=0, pady=(0, 10), sticky="ew")
+    count_production_btn.grid(row=2, column=0, pady=(0, 10), sticky="ew")
     clean_btn = customtkinter.CTkButton(left, text="Wyczyść", command=clean_text)
-    clean_btn.grid(row=2, column=0, pady=(0, 10), sticky="ew")
+    clean_btn.grid(row=3, column=0, pady=(0, 10), sticky="ew")
     # umieść przycisk przełączania motywu w lewym panelu, aby pasował do pozostałych kontrolek
     # ustaw początkowy tekst zgodnie z aktualnym trybem wyglądu
 
     toogle_text = "Jasny motyw" if customtkinter.get_appearance_mode() == "Dark" else "Ciemny motyw"
     ch_theme = customtkinter.CTkButton(left, text=toogle_text, command=change)
-    ch_theme.grid(row=3, column=0, pady=(20, 10), sticky="ew")
+    ch_theme.grid(row=4, column=0, pady=(20, 10), sticky="ew")
 
     root.mainloop()
