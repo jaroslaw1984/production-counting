@@ -1,14 +1,11 @@
-from unittest import result
 import customtkinter
 import pandas as pd
 import tkinter as tk
 import math
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
-from project.Core.data_loader import load_excel
 from typing import Optional, Dict, Any
 from pathlib import Path
-from typing import Any
 
 # stała ścieżka do pliku konfiguracyjnego
 BASE_DIR = Path(__file__).resolve().parent.parent
