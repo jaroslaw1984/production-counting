@@ -274,20 +274,20 @@ def run_app():
             text_color="#eaeaea",
         ).pack(padx=16, pady=(14, 6), anchor="w")
 
-        mode_var = tk.StringVar(value="speed")
+        mode_var = tk.StringVar(value="shift")  #  aktywny tryb"speed" albo "shift"
 
         frame = customtkinter.CTkFrame(win)
         frame.pack(fill="both", expand=True, padx=16, pady=10)
 
+        # radio + entry szt./zmianę
+        row2 = customtkinter.CTkFrame(frame)
+        row2.pack(fill="x", padx=10, pady=6)
+                
         # --- wiersze z opcjami ---
         # prędkość
         row1 = customtkinter.CTkFrame(frame)
         row1.pack(fill="x", padx=10, pady=(10, 6))
-        
-        # radio + entry szt./zmianę
-        row2 = customtkinter.CTkFrame(frame)
-        row2.pack(fill="x", padx=10, pady=6)
-        
+                
         # odstęp wizualny między sekcjami
         spacer = customtkinter.CTkFrame(frame, height=12, fg_color="transparent")
         spacer.pack(fill="x")
