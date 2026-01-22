@@ -1,11 +1,14 @@
 import customtkinter
+import customtkinter as ctk
 import pandas as pd
 import tkinter as tk
 import math
+from ..config.db_loader import fetch_available_machines
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Dict, Any
 from pathlib import Path
+from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df
 
 # stała ścieżka do pliku konfiguracyjnego
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -68,6 +71,67 @@ def run_app():
         else:
             placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
 
+    def show_machine_select_popup(parent, machines: list[str], on_confirm):
+        popup = ctk.CTkToplevel(parent)
+        popup.title("Wybór maszyn")
+        popup.geometry("520x420")
+        popup.resizable(False, False)
+        popup.grab_set()
+
+        vars_map: dict[str, ctk.BooleanVar] = {}
+
+        title = ctk.CTkLabel(
+            popup,
+            text="Wybierz maszyny do przeliczenia",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        )
+        title.pack(pady=(12, 8))
+
+        scroll = ctk.CTkScrollableFrame(popup, width=480, height=260)
+        scroll.pack(padx=12, pady=8, fill="both", expand=True)
+
+        for m in machines:
+            var = ctk.BooleanVar(value=False)
+            vars_map[m] = var
+            cb = ctk.CTkCheckBox(scroll, text=m, variable=var)
+            cb.pack(anchor="w", pady=4, padx=8)
+
+        def select_all():
+            for v in vars_map.values():
+                v.set(True)
+
+        def confirm():
+            selected = [m for m, v in vars_map.items() if v.get()]
+            if not selected:
+                messagebox.showwarning("Brak wyboru", "Zaznacz przynajmniej jedną maszynę.")
+                return
+            popup.destroy()
+            on_confirm(selected)
+
+        btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=12, pady=12)
+
+        ctk.CTkButton(btn_frame, text="Wybierz wszystkie", command=select_all).pack(side="left")
+        ctk.CTkButton(btn_frame, text="Anuluj", command=popup.destroy).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_frame, text="Przelicz produkcję", command=confirm).pack(side="right")
+        
+    def loading_machine_data(parent):
+        try:
+            machines = fetch_available_machines()
+        except Exception as e:
+            messagebox.showerror("DB error", str(e))
+            return
+
+        show_machine_select_popup(parent, machines, calculate_from_db)
+               
+        
+    def calculate_from_db(selected_machines: list[str]):
+        df_raw = fetch_orders_for_machines(selected_machines)
+        df = normalize_db_df(df_raw)
+
+        print("Wybrane maszyny:", selected_machines)
+        print(df.head(10))       
+    
     # funkcja przełączania motywu
     def change():
         if customtkinter.get_appearance_mode() == "Light":
@@ -874,7 +938,7 @@ def run_app():
         _upadate_placeholder_visibility()
 
 # 6) Przykładowe przyciski w lewym panelu
-    download_machine_btn = customtkinter.CTkButton(left, text="Wczytaj maszyny")
+    download_machine_btn = customtkinter.CTkButton(left, text="Wczytaj maszyny", command=lambda: loading_machine_data(root))
     download_machine_btn.grid(row=0, column=0, pady=(0, 10), sticky="ew")
     load_machine_btn = customtkinter.CTkButton(left, text="Wczytaj plik", command=on_open_file)
     load_machine_btn.grid(row=1, column=0, pady=(0, 10), sticky="ew")
