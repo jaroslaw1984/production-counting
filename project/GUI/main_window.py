@@ -74,11 +74,34 @@ def run_app():
     def show_machine_select_popup(parent, machines: list[str], on_confirm):
         popup = ctk.CTkToplevel(parent)
         popup.title("Wybór maszyn")
-        popup.geometry("520x420")
+        popup.geometry("620x460")
         popup.resizable(False, False)
         popup.grab_set()
+        
+        df_mc: pd.DataFrame | None = None  # <-- KLUCZOWA LINIA
+        
+        # wczytaj machine_config (z cache app_state jeśli jest)
+        try:
+            df_mc = app_state.get("machine_cfg")
+            if df_mc is None or df_mc.empty:
+                df_mc = load_machine_config()
+                app_state["machine_cfg"] = df_mc
+        except Exception as e:
+            messagebox.showerror("Błąd konfiguracji", f"Nie mogę wczytać machine_config.csv:\n{e}")
+            popup.destroy()
+            return
 
-        vars_map: dict[str, ctk.BooleanVar] = {}
+        # tu już NA PEWNO jest DataFrame
+        if df_mc is None:
+            messagebox.showerror("Błąd", "Brak konfiguracji maszyn (df_mc=None).")
+            popup.destroy()
+            return
+
+        df_mc_df: pd.DataFrame = df_mc
+
+        vars_map: dict[str, tk.BooleanVar] = {}
+        pps_vars: dict[str, tk.StringVar] = {}  # pieces per shift (entry)
+        default_pps: dict[str, int] = {}
 
         title = ctk.CTkLabel(
             popup,
@@ -87,33 +110,140 @@ def run_app():
         )
         title.pack(pady=(12, 8))
 
-        scroll = ctk.CTkScrollableFrame(popup, width=480, height=260)
+        header = ctk.CTkFrame(popup, fg_color="transparent")
+        header.pack(fill="x", padx=12)
+
+        ctk.CTkLabel(header, text="Maszyna", width=220, anchor="w").pack(side="left")
+        ctk.CTkLabel(header, text="Szt./zmianę", width=120, anchor="w").pack(side="left")
+
+        scroll = ctk.CTkScrollableFrame(popup, width=580, height=280)
         scroll.pack(padx=12, pady=8, fill="both", expand=True)
 
-        for m in machines:
-            var = ctk.BooleanVar(value=False)
-            vars_map[m] = var
-            cb = ctk.CTkCheckBox(scroll, text=m, variable=var)
-            cb.pack(anchor="w", pady=4, padx=8)
+        # helper: weź default szt./zmianę z machine_config.csv
+        def get_pps_for(machine: str) -> int:
+            row = df_mc_df.loc[df_mc_df["workplace"].astype("string").str.strip() == str(machine).strip()]
+            if row.empty:
+                return 0
+            return int(row.iloc[0]["count_by_shift"])
 
-        def select_all():
-            for v in vars_map.values():
-                v.set(True)
+        # budujemy listę: checkbox + entry
+        for m in machines:
+            row = ctk.CTkFrame(scroll, fg_color="transparent")
+            row.pack(fill="x", padx=6, pady=3)
+
+            var = tk.BooleanVar(value=False)
+            vars_map[m] = var
+
+            cb = ctk.CTkCheckBox(row, text=m, variable=var, width=220)
+            cb.pack(side="left", padx=(4, 10))
+
+            pps = get_pps_for(m)
+            default_pps[m] = pps
+            sv = tk.StringVar(value=str(pps))
+            pps_vars[m] = sv
+
+            entry = ctk.CTkEntry(row, width=120, textvariable=sv)
+            entry.pack(side="left")
+
+            ctk.CTkLabel(row, text="szt./zmianę", text_color="#aaaaaa").pack(side="left", padx=8)
+
+        # --- TOGGLE: Wybierz/Odznacz wszystkie ---
+        def _all_selected() -> bool:
+            return all(v.get() for v in vars_map.values()) if vars_map else False
+
+        def _any_selected() -> bool:
+            return any(v.get() for v in vars_map.values()) if vars_map else False
+
+        def _refresh_toggle_btn_text():
+            toggle_btn.configure(text="Odznacz wszystkie" if _all_selected() else "Wybierz wszystkie")
+
+        def toggle_select_all():
+            if _all_selected():
+                for v in vars_map.values():
+                    v.set(False)
+            else:
+                for v in vars_map.values():
+                    v.set(True)
+            _refresh_toggle_btn_text()
+
+        # gdy user klika pojedyncze checkboxy, aktualizuj napis przycisku
+        for v in vars_map.values():
+            try:
+                v.trace_add("write", lambda *args: _refresh_toggle_btn_text())
+            except Exception:
+                pass
+
+        def _parse_int_or_none(s: str):
+            s = (s or "").strip().replace(",", ".")
+            if s == "":
+                return None
+            # pozwól wpisać "120" albo "120.0"
+            try:
+                return int(float(s))
+            except Exception:
+                return None
 
         def confirm():
+            nonlocal df_mc_df
             selected = [m for m, v in vars_map.items() if v.get()]
             if not selected:
                 messagebox.showwarning("Brak wyboru", "Zaznacz przynajmniej jedną maszynę.")
                 return
+
+            # 1) sprawdź zmiany szt./zmianę i ewentualnie zapisz do machine_config.csv
+            changes = []
+            for m, sv in pps_vars.items():
+                new_val = _parse_int_or_none(sv.get())
+                if new_val is None or new_val < 0:
+                    messagebox.showerror("Błędna wartość", f"Maszyna {m}: nieprawidłowa wartość szt./zmianę.")
+                    return
+                old_val = int(default_pps.get(m, 0))
+                if new_val != old_val:
+                    changes.append((m, old_val, new_val))
+
+            if changes:
+                # pytamy 1 raz zbiorczo (czytelniej niż spam popupami)
+                preview = "\n".join([f"{m}: {old} → {new}" for (m, old, new) in changes[:12]])
+                if len(changes) > 12:
+                    preview += "\n..."
+
+                if messagebox.askyesno(
+                    "Zapis do konfiguracji",
+                    "Wykryto zmiany szt./zmianę:\n\n"
+                    f"{preview}\n\n"
+                    "Zapisać do machine_config.csv?"
+                ):
+                    for m, _, new_val in changes:
+                        mask = df_mc_df["workplace"].astype("string").str.strip() == str(m).strip()
+                        if mask.any():
+                            df_mc_df.loc[mask, "count_by_shift"] = int(new_val)
+                        else:
+                            # jeśli maszyny nie ma w configu – dopisujemy z zerową prędkością (żeby nie wywaliło)    
+                            new_row = pd.DataFrame([{
+                                "workplace": str(m).strip(),
+                                "speed_m_per_min": 0.0,
+                                "count_by_shift": int(new_val),
+                            }])
+
+                            df_mc_df = pd.concat([df_mc_df, new_row], ignore_index=True)
+
+                    app_state["machine_cfg"] = df_mc_df
+                    save_machine_config(df_mc_df, MACHINE_CONFIG_PATH)
+                    
             popup.destroy()
             on_confirm(selected)
 
         btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
         btn_frame.pack(fill="x", padx=12, pady=12)
 
-        ctk.CTkButton(btn_frame, text="Wybierz wszystkie", command=select_all).pack(side="left")
+        toggle_btn = ctk.CTkButton(btn_frame, text="Wybierz wszystkie", command=toggle_select_all)
+        toggle_btn.pack(side="left")
+
         ctk.CTkButton(btn_frame, text="Anuluj", command=popup.destroy).pack(side="right", padx=(8, 0))
         ctk.CTkButton(btn_frame, text="Przelicz produkcję", command=confirm).pack(side="right")
+
+        _refresh_toggle_btn_text()
+
         
     def loading_machine_data(parent):
         try:
