@@ -6,6 +6,7 @@ import math
 import warnings
 import os
 import tempfile
+import re
 from ..config.db_loader import fetch_available_machines
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
@@ -70,18 +71,7 @@ def run_app():
     right.grid_columnconfigure(0, weight=1)
     right.grid_rowconfigure(0, weight=0)  # toolbar
     right.grid_rowconfigure(1, weight=1)  # treść (textbox / tabela)
-    
-    # --- toolbar nad raportem ---
-    # report_toolbar = customtkinter.CTkFrame(right, fg_color="transparent")
-    # report_toolbar.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 6))
-    # report_toolbar.grid_columnconfigure(0, weight=1)
-    # report_toolbar.grid_remove()  # ukryty na start
-
-    # przycisk drukowania (startowo ukryty)
-    # print_btn = customtkinter.CTkButton(report_toolbar, text="Drukuj raport", command=lambda: print_current_report())
-    # print_btn.grid(row=0, column=1, sticky="e")
-    # print_btn.grid_remove()  # ukryty dopóki nie ma raportu
-        
+          
  # 5) Element, który ma się rozciągać (np. Text lub Treeview)
     text = customtkinter.CTkTextbox(right)
     text.grid(row=1, column=0, sticky="nsew")
@@ -97,7 +87,8 @@ def run_app():
 
 
     def print_current_report() -> None:
-        report_text = app_state.get("last_report_text", "")
+        full_text = app_state.get("last_report_text", "")
+        report_text = make_print_summary(full_text)
         if not report_text or not report_text.strip():
             messagebox.showwarning("Brak raportu", "Nie ma nic do wydrukowania.")
             _set_print_visible(False)
@@ -131,6 +122,53 @@ def run_app():
     result_var = tk.StringVar(value="")
     status_label = customtkinter.CTkLabel(left, textvariable=result_var, anchor="w")
     status_label.grid(row=4, column=0, pady=(6, 0), sticky="ew")
+
+    def make_print_summary(report_text: str) -> str:
+        """
+        Z pełnego raportu wycina tylko:
+        === WLO-... ===
+        Produkcja będzie trwać do: ...
+        """
+        if not report_text or not report_text.strip():
+            return ""
+
+        lines = report_text.splitlines()
+        out: list[str] = []
+        current_machine: str | None = None
+        current_end: str | None = None
+
+        for line in lines:
+            line = line.strip()
+
+            # nagłówek maszyny
+            m = re.match(r"^===\s*(WLO-[A-Z]\d{3})\s*===$", line)
+            if m:
+                # jeśli kończymy poprzednią maszynę
+                if current_machine:
+                    out.append(f"=== {current_machine} ===")
+                    out.append(current_end or "Produkcja będzie trwać do: brak danych")
+                    out.append("")  # pusta linia między maszynami
+                current_machine = m.group(1)
+                current_end = None
+                continue
+
+            # linia końca produkcji
+            if line.startswith("Produkcja będzie trwać do:"):
+                current_end = line
+
+            # jeśli maszyna nie ma danych
+            if line == "Brak danych." and current_machine:
+                current_end = "Produkcja będzie trwać do: brak danych"
+
+        # domknij ostatnią maszynę
+        if current_machine:
+            out.append(f"=== {current_machine} ===")
+            out.append(current_end or "Produkcja będzie trwać do: brak danych")
+            out.append("")
+
+        title = "---- Przewidywane zakończenie produkcji --- \n"
+        return title + "\n".join(out).rstrip() + "\n"    
+
 
     # helper: aktualizuje widoczność placeholdera w textboxie
     def _upadate_placeholder_visibility():
@@ -428,7 +466,6 @@ def run_app():
 
         app_state["last_report_text"] = report
         _set_print_visible(bool(report.strip()))
-
 
     # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
     def loading_machine_data(parent):
