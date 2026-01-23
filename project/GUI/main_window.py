@@ -166,7 +166,7 @@ def run_app():
             out.append(current_end or "Produkcja będzie trwać do: brak danych")
             out.append("")
 
-        title = "---- Przewidywane zakończenie produkcji --- \n"
+        title = "---- Przewidywane zakończenie produkcji --- \n\n"
         return title + "\n".join(out).rstrip() + "\n"    
 
 
@@ -366,6 +366,7 @@ def run_app():
     # funkcja budująca raport tekstowy z DB        
     def build_db_report_pieces(
         df: pd.DataFrame,
+        df_cfg: pd.DataFrame,
         selected_machines: list[str],
         pps_by_machine: dict[str, int],
         start_d: date,
@@ -398,7 +399,36 @@ def run_app():
                 lines.append("Szt./zmianę: BRAK / 0 (nie da się policzyć zmian)\n")
                 continue
 
-            shifts_exact = total_remaining / pps if total_remaining > 0 else 0.0
+            # --- ZBROJENIA (tak samo jak Excel) ---
+            # normalizacja kluczy
+            df_one["profile"] = df_one["profile"].astype("string").str.strip()
+            df_one["side"] = df_one["side"].astype("string").str.strip().str.zfill(4)
+
+            cfg = df_cfg.copy()
+            cfg["profile"] = cfg["profile"].astype("string").str.strip()
+            cfg["side"] = cfg["side"].astype("string").str.strip().str.zfill(4)
+
+            # merge setting_time
+            df_one = df_one.merge(
+                cfg[["profile", "side", "setting_time"]],
+                on=["profile", "side"],
+                how="left",
+            )
+
+            df_one["setting_time"] = pd.to_numeric(df_one["setting_time"], errors="coerce").fillna(0).astype(int)
+
+            # zasada: dla strony 0020 nie liczymy zbrojeń
+            df_one.loc[df_one["side"] == "0020", "setting_time"] = 0
+
+            # liczymy unikalne zbrojenia (profile+side)
+            unique_setups = df_one[["profile", "side", "setting_time"]].drop_duplicates()
+            setup_count = int((unique_setups["setting_time"] > 0).sum())
+            setup_min = float(unique_setups["setting_time"].sum())
+            setup_shifts = setup_min / (8 * 60)  # 8h = 480 min
+
+            # --- ZMIANY: produkcja + zbrojenia ---
+            prod_shifts = total_remaining / pps if total_remaining > 0 else 0.0
+            shifts_exact = prod_shifts + setup_shifts
             shifts_rounded = round_shifts_custom(shifts_exact)
 
             # koniec produkcji dla tej maszyny
@@ -410,6 +440,8 @@ def run_app():
             )
 
             lines.append(f"Szt./zmianę: {pps}")
+            lines.append(f"Ilość zbrojeń profili: {setup_count}")
+            lines.append(f"Czas zbrojeń: {setup_min:.0f} min")
             lines.append(f"Zmiany (8h): {shifts_exact:.2f} → {shifts_rounded}")
             lines.append(f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}")
             lines.append(f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s})\n")
@@ -446,10 +478,21 @@ def run_app():
         # 2) dane z DB
         df_raw = fetch_orders_for_machines(selected_machines)
         df = normalize_db_df(df_raw)
+        
+        # 2b) wczytaj profile_config (z cache app_state jeśli jest)
+        try:
+            df_cfg = app_state.get("cfg")
+            if df_cfg is None or df_cfg.empty:
+                df_cfg = load_profile_confing()
+                app_state["cfg"] = df_cfg
+        except Exception as e:
+            messagebox.showerror("Błąd konfiguracji", f"Nie mogę wczytać profile_config.csv:\n{e}")
+            return
 
         # 3) raport
         report = build_db_report_pieces(
             df=df,
+            df_cfg=df_cfg,
             selected_machines=selected_machines,
             pps_by_machine=pps_by_machine,
             start_d=start_d,
