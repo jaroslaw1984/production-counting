@@ -64,6 +64,9 @@ def fetch_orders_for_machines(machines: list[str]) -> pd.DataFrame:
             soll_menge_bas,
             gut_bas,
             aus_bas,
+            soll_menge_sek,
+            gut_sek,
+            aus_sek,
             eingeplant,
             artikel
         FROM {VIEW_FULLNAME}
@@ -100,6 +103,9 @@ def normalize_db_df(df: pd.DataFrame) -> pd.DataFrame:
         "a_status": "status",
         "artikel": "article",
         "aus_bas": "aus_bas",
+        "soll_menge_sek": "target_value_pcs",
+        "gut_sek": "good_qty_pcs",
+        "aus_sek": "aus_pcs",
     })
 
     # 2) czyszczenie tekstów
@@ -110,7 +116,7 @@ def normalize_db_df(df: pd.DataFrame) -> pd.DataFrame:
     out["status"] = out["status"].astype("string").str.strip()
 
     # 3) liczby (na wypadek przecinków dziesiętnych)
-    for col in ["target_value_p", "good_qty_p", "aus_bas"]:
+    for col in ["target_value_p", "good_qty_p", "aus_bas", "target_value_pcs", "good_qty_pcs", "aus_pcs"]:
         if col in out.columns:
             # jeśli przyjdzie jako tekst "58,5" -> zamiana
             out[col] = (
@@ -122,5 +128,21 @@ def normalize_db_df(df: pd.DataFrame) -> pd.DataFrame:
 
     # 4) remaining: dla U/L liczymy soll - gut; dla V też wyjdzie soll - 0 (OK)
     out["remaining_p"] = (out["target_value_p"] - out["good_qty_p"]).clip(lower=0.0)
+    
+
+    # 5) SZTUKI (jeśli dostępne w DB)
+    if "target_value_pcs" in out.columns and "good_qty_pcs" in out.columns:
+        out["remaining_pcs"] = (out["target_value_pcs"] - out["good_qty_pcs"]).clip(lower=0.0)
+
+
+    if "soll_menge_sek" in out.columns and "gut_sek" in out.columns:
+        out["remaining_pcs"] = (
+            out["soll_menge_sek"].astype("string")
+            .str.replace(",", ".", regex=False)
+        )
+        out["remaining_pcs"] = (
+            pd.to_numeric(out["remaining_pcs"], errors="coerce").fillna(0)
+            - out["good_qty_pcs"]
+        ).clip(lower=0)
 
     return out
