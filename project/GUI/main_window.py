@@ -1,8 +1,10 @@
 import customtkinter
 import customtkinter as ctk
+from matplotlib.pyplot import show
 import pandas as pd
 import tkinter as tk
 import math
+import warnings
 from ..config.db_loader import fetch_available_machines
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
@@ -14,7 +16,10 @@ from project.config.db_loader import fetch_available_machines, fetch_orders_for_
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFING_PATH = BASE_DIR / "config" / "profile_config.csv"
 MACHINE_CONFIG_PATH = BASE_DIR / "config" / "machine_config.csv"
-SHIFTS_PER_DAY = 3  
+SHIFTS_PER_DAY = 3
+
+# ignore specific pandas warning about SQLAlchemy
+warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy connectable*")  
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
@@ -71,8 +76,8 @@ def run_app():
         else:
             placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
 
-    def show_machine_select_popup(parent, machines: list[str], on_confirm):
-        popup = ctk.CTkToplevel(parent)
+    def show_machine_select_popup(machines: list[str], on_confirm):
+        popup = ctk.CTkToplevel(root)
         popup.title("Wybór maszyn")
         popup.geometry("620x460")
         popup.resizable(False, False)
@@ -190,6 +195,14 @@ def run_app():
                 messagebox.showwarning("Brak wyboru", "Zaznacz przynajmniej jedną maszynę.")
                 return
 
+            pps_by_machine = {}
+            for m in selected:
+                val = _parse_int_or_none(pps_vars[m].get())
+                if val is None or val <= 0:
+                    messagebox.showerror("Błędna wartość", f"Maszyna {m}: szt./zmianę musi być > 0.")
+                    return
+                pps_by_machine[m] = int(val)
+
             # 1) sprawdź zmiany szt./zmianę i ewentualnie zapisz do machine_config.csv
             changes = []
             for m, sv in pps_vars.items():
@@ -231,7 +244,7 @@ def run_app():
                     save_machine_config(df_mc_df, MACHINE_CONFIG_PATH)
                     
             popup.destroy()
-            on_confirm(selected)
+            on_confirm(selected, pps_by_machine)
 
         btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
         btn_frame.pack(fill="x", padx=12, pady=12)
@@ -245,6 +258,107 @@ def run_app():
         _refresh_toggle_btn_text()
 
         
+    def build_db_report_pieces(
+        df: pd.DataFrame,
+        selected_machines: list[str],
+        pps_by_machine: dict[str, int],
+        start_d: date,
+        start_shift: int,
+        include_weekends: bool,
+    ) -> str:
+        lines = []
+        lines.append("RAPORT DB (sztuki)\n")
+
+        for machine in selected_machines:
+            df_one = df[df["workplace"] == machine].copy()
+            if df_one.empty:
+                lines.append(f"=== {machine} ===")
+                lines.append("Brak danych.\n")
+                continue
+
+            # soll i gut w sztukach
+            soll = pd.to_numeric(df_one["target_value_pcs"], errors="coerce").fillna(0)
+            gut = pd.to_numeric(df_one["good_qty_pcs"], errors="coerce").fillna(0)
+
+            remaining = (soll - gut).clip(lower=0)
+            total_remaining = float(remaining.sum())
+
+            pps = int(pps_by_machine.get(machine, 0))
+
+            lines.append(f"=== {machine} ===")
+            lines.append(f"Pozostało: {total_remaining:.0f} szt.")
+
+            if pps <= 0:
+                lines.append("Szt./zmianę: BRAK / 0 (nie da się policzyć zmian)\n")
+                continue
+
+            shifts_exact = total_remaining / pps if total_remaining > 0 else 0.0
+            shifts_rounded = round_shifts_custom(shifts_exact)
+
+            # koniec produkcji dla tej maszyny
+            end_d, end_s = add_shifts(
+                start_date=start_d,
+                start_shift=start_shift,
+                shifts_count=shifts_rounded,
+                include_weekends=include_weekends,
+            )
+
+            lines.append(f"Szt./zmianę: {pps}")
+            lines.append(f"Zmiany (8h): {shifts_exact:.2f} → {shifts_rounded}")
+            lines.append(f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}")
+            lines.append(f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s})\n")
+
+        return "\n".join(lines)
+       
+        
+    def calculate_from_db(selected_machines, pps_by_machine):
+        # 1) parametry czasu (ten sam popup co w Excelu)
+        # bierzemy default szt./zmianę z pierwszej zaznaczonej maszyny
+        default_pps = int(pps_by_machine.get(selected_machines[0], 0)) if selected_machines else 0
+
+        choice = ask_schedule_popup(root) 
+        
+        if not choice:
+            return  # anulowano
+
+        calendar_mode = choice.get("calendar", "workdays")
+        include_weekends = (calendar_mode == "all")
+        start_shift = int(choice.get("start_shift", 1))
+
+        start_mode = choice.get("start_mode", "today")
+        start_date_str = choice.get("start_date", date.today().isoformat())
+
+        if start_mode == "date":
+            try:
+                start_d = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                messagebox.showerror("Błąd daty", "Podaj datę w formacie YYYY-MM-DD.")
+                return
+        else:
+            start_d = date.today()
+
+        # 2) dane z DB
+        df_raw = fetch_orders_for_machines(selected_machines)
+        df = normalize_db_df(df_raw)
+
+        # 3) raport
+        report = build_db_report_pieces(
+            df=df,
+            selected_machines=selected_machines,
+            pps_by_machine=pps_by_machine,
+            start_d=start_d,
+            start_shift=start_shift,
+            include_weekends=include_weekends,
+        )
+        show_text_view()  # <- bez argumentów
+
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert("end", report)
+        text.configure(state="disabled")
+        _upadate_placeholder_visibility()  # <- to chowa ten duży napis
+
+
     def loading_machine_data(parent):
         try:
             machines = fetch_available_machines()
@@ -252,15 +366,8 @@ def run_app():
             messagebox.showerror("DB error", str(e))
             return
 
-        show_machine_select_popup(parent, machines, calculate_from_db)
-               
-        
-    def calculate_from_db(selected_machines: list[str]):
-        df_raw = fetch_orders_for_machines(selected_machines)
-        df = normalize_db_df(df_raw)
+        show_machine_select_popup(machines, calculate_from_db)
 
-        print("Wybrane maszyny:", selected_machines)
-        print(df.head(10))       
     
     # funkcja przełączania motywu
     def change():
@@ -336,7 +443,7 @@ def run_app():
     def round_shifts_custom(shifts: float) -> int:
         """4.5 -> 4 (w dół), 4.7 -> 5 (w górę)."""
         frac = shifts - math.floor(shifts)
-        return math.floor(shifts) if frac <= 0.5 else math.ceil(shifts)
+        return math.floor(shifts) if frac < 0.5 else math.ceil(shifts)
 
     def next_workday(d: date) -> date:
         d += timedelta(days=1)
@@ -560,9 +667,7 @@ def run_app():
         customtkinter.CTkRadioButton(
             row_cal, text="dni robocze + weekendy", variable=calendar_var, value="all", text_color="#eaeaea"
         ).pack(side="left", padx=10)
-
-
-
+        
         def parse_float(s: str) -> float:
             return float(s.replace(",", ".").strip())
 
@@ -613,6 +718,80 @@ def run_app():
         return result["value"]
 
     # note: fallback `tk` popup removed — use `ask_calc_mode_popup` (CTkToplevel)
+
+    # popup do wyboru dla przycisku "Wczytaj maszyny " dni tygodnia i startu 
+    def ask_schedule_popup(parent) -> dict | None:
+        popup = ctk.CTkToplevel(parent)
+        popup.title("Parametry liczenia (DB)")
+        popup.resizable(False, False)
+        popup.grab_set()
+
+        result: dict | None = None
+
+        # --- Kalendarz ---
+        cal_var = tk.StringVar(value="workdays")  # workdays | all
+
+        cal_frame = ctk.CTkFrame(popup)
+        cal_frame.pack(fill="x", padx=12, pady=(12, 6))
+
+        ctk.CTkLabel(cal_frame, text="Kalendarz:", width=120, anchor="w").pack(side="left")
+        ctk.CTkRadioButton(cal_frame, text="dni robocze", variable=cal_var, value="workdays").pack(side="left", padx=10)
+        ctk.CTkRadioButton(cal_frame, text="dni robocze + weekendy", variable=cal_var, value="all").pack(side="left", padx=10)
+
+        # --- Start od zmiany ---
+        shift_var = tk.IntVar(value=1)
+
+        shift_frame = ctk.CTkFrame(popup)
+        shift_frame.pack(fill="x", padx=12, pady=6)
+
+        ctk.CTkLabel(shift_frame, text="Start od zmiany:", width=120, anchor="w").pack(side="left")
+        ctk.CTkRadioButton(shift_frame, text="1", variable=shift_var, value=1).pack(side="left", padx=18)
+        ctk.CTkRadioButton(shift_frame, text="2", variable=shift_var, value=2).pack(side="left", padx=18)
+        ctk.CTkRadioButton(shift_frame, text="3", variable=shift_var, value=3).pack(side="left", padx=18)
+
+        # --- Start liczenia ---
+        start_mode_var = tk.StringVar(value="today")  # today | date
+        start_date_var = tk.StringVar(value=date.today().isoformat())
+
+        start_frame = ctk.CTkFrame(popup)
+        start_frame.pack(fill="x", padx=12, pady=6)
+
+        ctk.CTkLabel(start_frame, text="Start liczenia:", width=120, anchor="w").pack(side="left")
+        ctk.CTkRadioButton(start_frame, text="od dziś", variable=start_mode_var, value="today").pack(side="left", padx=10)
+        ctk.CTkRadioButton(start_frame, text="od daty", variable=start_mode_var, value="date").pack(side="left", padx=10)
+
+        date_entry = ctk.CTkEntry(start_frame, width=140, textvariable=start_date_var)
+        date_entry.pack(side="left", padx=10)
+        ctk.CTkLabel(start_frame, text="(YYYY-MM-DD)", text_color="#aaaaaa").pack(side="left")
+
+        def _on_ok():
+            nonlocal result
+            mode = start_mode_var.get()
+            ds = start_date_var.get().strip()
+
+            if mode == "date":
+                try:
+                    datetime.strptime(ds, "%Y-%m-%d")
+                except ValueError:
+                    messagebox.showerror("Błąd daty", "Podaj datę w formacie YYYY-MM-DD.")
+                    return
+
+            result = {
+                "calendar": cal_var.get(),
+                "start_shift": int(shift_var.get()),
+                "start_mode": mode,
+                "start_date": ds,
+            }
+            popup.destroy()
+
+        btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=12, pady=(10, 12))
+
+        ctk.CTkButton(btn_frame, text="Anuluj", command=popup.destroy).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_frame, text="OK", command=_on_ok).pack(side="right")
+
+        popup.wait_window()
+        return result
 
     
     def calculate_production():
@@ -861,6 +1040,7 @@ def run_app():
         # Debug / opcjonalnie podgląd:
         # show_table_from_df(df)
         
+        
     def save_machine_config(df_mc: pd.DataFrame, path: Path) -> None:
         df_mc.to_csv(path, sep=";", index=False, encoding="utf-8")
 
@@ -919,7 +1099,7 @@ def run_app():
             df_raw.columns = [
                 " ".join(str(c).replace("\xa0", " ").strip().split())
                 for c in df_raw.columns
-]
+            ]
             
             def find_col(df_cols, *candidates):
                 cols_norm = {str(c).strip(): str(c) for c in df_cols}
