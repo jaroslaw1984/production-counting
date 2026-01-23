@@ -84,6 +84,7 @@ def run_app():
     status_label = customtkinter.CTkLabel(left, textvariable=result_var, anchor="w")
     status_label.grid(row=4, column=0, pady=(6, 0), sticky="ew")
 
+    # helper: aktualizuje widoczność placeholdera w textboxie
     def _upadate_placeholder_visibility():
         # sprawdź zawartość i pokaż/ukryj placeholder
         content = text.get("1.0", "end-1c")
@@ -92,6 +93,7 @@ def run_app():
         else:
             placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
 
+    # funkcja pokazująca popup wyboru maszyn
     def show_machine_select_popup(machines: list[str], on_confirm):
         popup = ctk.CTkToplevel(root)
         popup.title("Wybór maszyn")
@@ -173,12 +175,11 @@ def run_app():
         def _all_selected() -> bool:
             return all(v.get() for v in vars_map.values()) if vars_map else False
 
-        def _any_selected() -> bool:
-            return any(v.get() for v in vars_map.values()) if vars_map else False
-
+        # helper: odśwież napis przycisku
         def _refresh_toggle_btn_text():
             toggle_btn.configure(text="Odznacz wszystkie" if _all_selected() else "Wybierz wszystkie")
 
+        # funkcja toggle wybiera/odznacza wszystkie
         def toggle_select_all():
             if _all_selected():
                 for v in vars_map.values():
@@ -194,7 +195,8 @@ def run_app():
                 v.trace_add("write", lambda *args: _refresh_toggle_btn_text())
             except Exception:
                 pass
-
+         
+         # helper: parsowanie int z tekstu (lub None)       
         def _parse_int_or_none(s: str):
             s = (s or "").strip().replace(",", ".")
             if s == "":
@@ -205,6 +207,7 @@ def run_app():
             except Exception:
                 return None
 
+        # potwierdzenie wyboru
         def confirm():
             nonlocal df_mc_df
             selected = [m for m, v in vars_map.items() if v.get()]
@@ -274,7 +277,7 @@ def run_app():
 
         _refresh_toggle_btn_text()
 
-        
+    # funkcja budująca raport tekstowy z DB        
     def build_db_report_pieces(
         df: pd.DataFrame,
         selected_machines: list[str],
@@ -327,7 +330,7 @@ def run_app():
 
         return "\n".join(lines)
        
-        
+    # funkcja przeliczająca produkcję z DB i pokazująca wyniki w textboxie    
     def calculate_from_db(selected_machines, pps_by_machine):
         # 1) parametry czasu (ten sam popup co w Excelu)
         # bierzemy default szt./zmianę z pierwszej zaznaczonej maszyny
@@ -375,7 +378,7 @@ def run_app():
         text.configure(state="disabled")
         _upadate_placeholder_visibility()  # <- to chowa ten duży napis
 
-
+    # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
     def loading_machine_data(parent):
         try:
             machines = fetch_available_machines()
@@ -401,6 +404,7 @@ def run_app():
             except Exception:
                 pass
     
+    # funkcja wyświetlania tylko tekstu w textboxie (ukrywa tabelę, jeśli była)
     def show_text_view():
         tf = app_state.get("table_frame")
         if tf is not None:
@@ -412,7 +416,7 @@ def run_app():
         text.grid(row=0, column=0, sticky="nsew")
         
         
-    
+    # funkcja wyświetlania DataFrame w tabeli Treeview
     def show_table_from_df(df: pd.DataFrame):
         # 1) schowaj textbox
         # usuń poprzednią, jeśli istnieje
@@ -468,6 +472,7 @@ def run_app():
             d += timedelta(days=1)
         return d
 
+    # dodaje określoną liczbę zmian do daty i zmiany startowej
     def add_shifts(start_date: date, start_shift: int, shifts_count: int, include_weekends: bool) -> tuple[date, int]:
         """
         Zwraca (end_date, end_shift) po wykonaniu shifts_count zmian,
@@ -493,7 +498,7 @@ def run_app():
 
         return d, s
 
-
+    # wczytuje konfigurację maszyn
     def load_machine_config() -> pd.DataFrame:
         if not MACHINE_CONFIG_PATH.exists():
             raise FileNotFoundError(f"Plik konfiguracyjny nie istnieje: {MACHINE_CONFIG_PATH}")
@@ -523,7 +528,7 @@ def run_app():
 
         return df_mc
 
-    
+    # sprawdz czy plik istnieje i wczytaj konfigurację profili
     def load_profile_confing() -> pd.DataFrame:
         # spradz czy plik istnieje
         if not CONFING_PATH.exists():
@@ -555,6 +560,7 @@ def run_app():
 
         return df_cfg
     
+    #--- POPUP: wybór trybu przeliczenia produkcji ---
     def ask_calc_mode_popup(parent, workplace: str, default_speed: float, default_pieces_per_shift: int):
         result: Dict[str, Optional[Dict[str, Any]]] = {"value": None}
         
@@ -685,9 +691,11 @@ def run_app():
             row_cal, text="dni robocze + weekendy", variable=calendar_var, value="all", text_color="#eaeaea"
         ).pack(side="left", padx=10)
         
+        # helper: parsowanie float z tekstu
         def parse_float(s: str) -> float:
             return float(s.replace(",", ".").strip())
 
+        # --- przyciski OK ---
         def on_ok():
             try:
                 if mode_var.get() == "speed":
@@ -722,6 +730,7 @@ def run_app():
                 return
             win.destroy()
 
+        # --- przyciski Anuluj ---
         def on_cancel():
             result["value"] = None
             win.destroy()
@@ -786,6 +795,7 @@ def run_app():
         date_entry.pack(side="left", padx=10)
         ctk.CTkLabel(start_frame, text="(YYYY-MM-DD)", text_color="#aaaaaa").pack(side="left")
 
+        #--- Przycisk OK ---
         def _on_ok():
             nonlocal result
             mode = start_mode_var.get()
@@ -821,7 +831,7 @@ def run_app():
         popup.wait_window()
         return result
 
-    
+    # główna funkcja przeliczania produkcji
     def calculate_production():
         df_plan = app_state.get("df")
         if df_plan is None or df_plan.empty:
@@ -905,8 +915,7 @@ def run_app():
                     app_state["machine_cfg"] = df_mc
                     default_pieces_per_shift = new_pps
 
-
-
+        # --- NORMALIZACJA DANYCH ---
         # wymagane kolumny po normalizacji
         required = {"profile", "side"}
         missing_cols = [c for c in required if c not in df.columns]
@@ -1068,11 +1077,11 @@ def run_app():
         # Debug / opcjonalnie podgląd:
         # show_table_from_df(df)
         
-        
+     # funkcja zapisu konfiguracji maszyn   
     def save_machine_config(df_mc: pd.DataFrame, path: Path) -> None:
         df_mc.to_csv(path, sep=";", index=False, encoding="utf-8")
 
-    
+    # funkcja wykrywania kolumny strony
     def detect_side_column(df: pd.DataFrame) -> str:
         """
         Zwraca kolumnę, która zawiera strony 20/21/22/23.
@@ -1129,6 +1138,7 @@ def run_app():
                 for c in df_raw.columns
             ]
             
+            # funkcja pomocnicza do znajdowania kolumny po możliwych nazwach
             def find_col(df_cols, *candidates):
                 cols_norm = {str(c).strip(): str(c) for c in df_cols}
                 for cand in candidates:
