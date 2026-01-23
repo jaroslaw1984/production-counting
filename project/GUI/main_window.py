@@ -1,6 +1,5 @@
 import customtkinter
 import customtkinter as ctk
-from matplotlib.pyplot import show
 import pandas as pd
 import tkinter as tk
 import math
@@ -31,6 +30,23 @@ def run_app():
     root = customtkinter.CTk()
     root.title("Policz produkcję")
     root.geometry("800x500")
+
+    def center_popup(parent, popup):
+        try:
+            parent.update_idletasks()
+            popup.update_idletasks()
+            pw = popup.winfo_width()
+            ph = popup.winfo_height()
+            rw = parent.winfo_width()
+            rh = parent.winfo_height()
+            rx = parent.winfo_rootx()
+            ry = parent.winfo_rooty()
+            x = rx + (rw - pw) // 2
+            y = ry + (rh - ph) // 2
+            popup.geometry(f"+{x}+{y}")
+        except Exception:
+            # best-effort centering — nie przerywamy działania aplikacji
+            pass
 
 # 1) Główna siatka: 2 kolumny (lewy panel i prawa treść)
     root.grid_columnconfigure(1, weight=1)
@@ -81,6 +97,7 @@ def run_app():
         popup.title("Wybór maszyn")
         popup.geometry("620x460")
         popup.resizable(False, False)
+        center_popup(root, popup)
         popup.grab_set()
         
         df_mc: pd.DataFrame | None = None  # <-- KLUCZOWA LINIA
@@ -267,7 +284,7 @@ def run_app():
         include_weekends: bool,
     ) -> str:
         lines = []
-        lines.append("RAPORT DB (sztuki)\n")
+        lines.append("---- Przewidywane zakończenie produkcji --- \n")
 
         for machine in selected_machines:
             df_one = df[df["workplace"] == machine].copy()
@@ -714,6 +731,11 @@ def run_app():
         customtkinter.CTkButton(btns, text="Anuluj", command=on_cancel, fg_color="#3a3a3a").pack(side="right")
         customtkinter.CTkButton(btns, text="OK", command=on_ok, fg_color="#3a3a3a").pack(side="right", padx=10)
 
+        # ustaw pozycję na środku rodzica przed blokowaniem okna
+        try:
+            center_popup(parent, win)
+        except Exception:
+            pass
         parent.wait_window(win)
         return result["value"]
 
@@ -789,6 +811,12 @@ def run_app():
 
         ctk.CTkButton(btn_frame, text="Anuluj", command=popup.destroy).pack(side="right", padx=(8, 0))
         ctk.CTkButton(btn_frame, text="OK", command=_on_ok).pack(side="right")
+
+        # ustaw okno na środku rodzica przed blokowaniem
+        try:
+            center_popup(parent, popup)
+        except Exception:
+            pass
 
         popup.wait_window()
         return result
@@ -1147,9 +1175,7 @@ def run_app():
             # teraz zostaw tylko potrzebne kolumny + side_col
             df = df[needed_fixed + [side_col]].copy()
             
-           
-
-
+            # 3) rename kolumn
             rename_map = {
                 "Stanowisko robocze": "workplace",
                 "Artykuł": "profile",
