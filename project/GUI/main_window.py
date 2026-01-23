@@ -4,6 +4,8 @@ import pandas as pd
 import tkinter as tk
 import math
 import warnings
+import os
+import tempfile
 from ..config.db_loader import fetch_available_machines
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
@@ -66,12 +68,58 @@ def run_app():
 
 # 4) Wnętrze prawego panelu też robimy responsywne
     right.grid_columnconfigure(0, weight=1)
-    right.grid_rowconfigure(0, weight=1)
+    right.grid_rowconfigure(0, weight=0)  # toolbar
+    right.grid_rowconfigure(1, weight=1)  # treść (textbox / tabela)
+    
+    # --- toolbar nad raportem ---
+    # report_toolbar = customtkinter.CTkFrame(right, fg_color="transparent")
+    # report_toolbar.grid(row=0, column=0, sticky="ew", padx=0, pady=(0, 6))
+    # report_toolbar.grid_columnconfigure(0, weight=1)
+    # report_toolbar.grid_remove()  # ukryty na start
 
-# 5) Element, który ma się rozciągać (np. Text lub Treevie)
+    # przycisk drukowania (startowo ukryty)
+    # print_btn = customtkinter.CTkButton(report_toolbar, text="Drukuj raport", command=lambda: print_current_report())
+    # print_btn.grid(row=0, column=1, sticky="e")
+    # print_btn.grid_remove()  # ukryty dopóki nie ma raportu
+        
+ # 5) Element, który ma się rozciągać (np. Text lub Treeview)
     text = customtkinter.CTkTextbox(right)
-    text.grid(row=0, column=0, sticky="nsew") # wypełnij cały dostępny obszar
+    text.grid(row=1, column=0, sticky="nsew")
     text.configure(state="disabled")  # na start zablokowany do edycji
+
+    
+    def _set_print_visible(visible: bool) -> None:
+        """Pokazuje/ukrywa przycisk druku (używamy place, bo przycisk jest 'pływający')."""
+        if visible:
+            print_btn.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-20)
+        else:
+            print_btn.place_forget()
+
+
+    def print_current_report() -> None:
+        report_text = app_state.get("last_report_text", "")
+        if not report_text or not report_text.strip():
+            messagebox.showwarning("Brak raportu", "Nie ma nic do wydrukowania.")
+            _set_print_visible(False)
+            return
+
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as f:
+                f.write(report_text)
+                path = f.name
+
+            os.startfile(path, "print")  # Windows
+        except Exception as e:
+            messagebox.showerror("Błąd druku", f"Nie udało się uruchomić druku:\n{e}")
+
+        # przycisk drukowania (startowo ukryty) - pływający prawy dół
+    print_btn = customtkinter.CTkButton(
+        right,
+        text="Drukuj raport",
+        command=print_current_report,
+        width=140
+    )
+    print_btn.place_forget()  # ukryty na start
 
     # placeholder (nakładana etykieta wewnątrz Textboxa)
     placeholder_text = "Program do obliczania produkcji \n\nKliknij 'Wczytaj plik', aby załadować dane. \n\n Następnie kliknij 'Przelicz produkcję', aby uzyskać wyniki. \n\n Dopuszczalne formaty plików Excel: .xlsx .xls"
@@ -92,7 +140,7 @@ def run_app():
             placeholder_lbl.place_forget()
         else:
             placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
-
+            
     # funkcja pokazująca popup wyboru maszyn
     def show_machine_select_popup(machines: list[str], on_confirm):
         popup = ctk.CTkToplevel(root)
@@ -376,7 +424,11 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", report)
         text.configure(state="disabled")
-        _upadate_placeholder_visibility()  # <- to chowa ten duży napis
+        _upadate_placeholder_visibility()
+
+        app_state["last_report_text"] = report
+        _set_print_visible(bool(report.strip()))
+
 
     # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
     def loading_machine_data(parent):
@@ -413,7 +465,6 @@ def run_app():
             except Exception:
                 pass
         app_state["table_frame"] = None
-        text.grid(row=0, column=0, sticky="nsew")
         
         
     # funkcja wyświetlania DataFrame w tabeli Treeview
@@ -429,7 +480,7 @@ def run_app():
 
         # 3) zbuduj nową ramkę + tree
         tf = customtkinter.CTkFrame(right)
-        tf.grid(row=0, column=0, sticky="nsew")
+        tf.grid(row=1, column=0, sticky="nsew")
         app_state["table_frame"] = tf
 
         cols = list(map(str, df.columns))
@@ -1066,13 +1117,13 @@ def run_app():
 
         result_text += "\nKonfiguracja czasów dla zbrojeń:\n" + configs.to_string(index=False)
         
-        show_text_view()
-        
         text.configure(state="normal")
         text.delete("1.0", "end")
         text.insert("end", result_text)
         text.configure(state="disabled")
         _upadate_placeholder_visibility()
+        
+        show_text_view()
 
         # Debug / opcjonalnie podgląd:
         # show_table_from_df(df)
@@ -1220,8 +1271,7 @@ def run_app():
             if "good_qty_p" not in df.columns:
                 df["good_qty_p"] = 0.0
 
-
-
+            # 4) czyść dane w kolumnach profile i side
             df["profile"] = (
                 df["profile"]
                 .astype("string")
@@ -1281,7 +1331,10 @@ def run_app():
         text.delete("1.0", "end")
         text.configure(state="disabled")
         result_var.set("")
+        _set_print_visible(False)
         _upadate_placeholder_visibility()
+
+
 
 # 6) Przykładowe przyciski w lewym panelu
     download_machine_btn = customtkinter.CTkButton(left, text="Wczytaj maszyny", command=lambda: loading_machine_data(root))
