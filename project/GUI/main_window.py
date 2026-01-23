@@ -55,7 +55,7 @@ def run_app():
     root.grid_columnconfigure(1, weight=1)
     root.grid_rowconfigure(0, weight=1)
 
-    default_font = customtkinter.CTkFont(family="Segoe UI", size=18, weight="bold")
+    default_font = customtkinter.CTkFont(family="Segoe UI", size=14, weight="bold")
 
 # 2) Lewy panel (np. przyciski/filtry)
     left = customtkinter.CTkFrame(root)
@@ -113,7 +113,7 @@ def run_app():
     print_btn.place_forget()  # ukryty na start
 
     # placeholder (nakładana etykieta wewnątrz Textboxa)
-    placeholder_text = "Program do obliczania produkcji \n\nKliknij 'Wczytaj plik', aby załadować dane. \n\n Następnie kliknij 'Przelicz produkcję', aby uzyskać wyniki. \n\n Dopuszczalne formaty plików Excel: .xlsx .xls"
+    placeholder_text = "Program do obliczania produkcji \n\n1. Kliknij „Wczytaj maszyny”, aby pobrać aktualne zlecenia z bazy danych.\n\n 2. Wybierz maszyny do przeliczenia i ustaw sztuki na zmianę. \n\n 3. Kliknij „Przelicz produkcję”, aby sprawdzić, \n\n do której zmiany i dnia potrwa produkcja. \n\n Opcjonalnie: \n\n – „Wczytaj plik” umożliwia przeliczenie produkcji z pliku Excel (.xlsx, .xls), \n\n jeśli baza danych jest niedostępna."
     placeholder_lbl = customtkinter.CTkLabel(text, text=placeholder_text, justify="center", text_color="#888888", font=default_font)
     # umieść placeholder wewnątrz textboxa, wyśrodkowany
     placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
