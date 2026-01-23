@@ -71,7 +71,7 @@ def fetch_orders_for_machines(machines: list[str]) -> pd.DataFrame:
             artikel
         FROM {VIEW_FULLNAME}
         WHERE masch_nr IN ({placeholders})
-          AND Vorgang IN ('0020','0021','0023')
+          AND Vorgang IN ('0020','0021','0022','0023')
           AND a_status IN ('U','V','L')
           AND eingeplant = 'M'
     """
@@ -80,6 +80,37 @@ def fetch_orders_for_machines(machines: list[str]) -> pd.DataFrame:
         df = pd.read_sql(sql, conn, params=tuple(machines))
 
     return df
+
+def debug_machine_filters(machine: str):
+    # wersja Z FILTRAMI (czyli to co robi program)
+    df = fetch_orders_for_machines([machine])
+    print(machine, "WITH FILTERS rows:", len(df))
+
+    # wersja BEZ filtrów – surowa prawda z DB
+    with _connect() as conn:
+        sql = f"""
+            SELECT TOP 200
+                masch_nr,
+                Vorgang,
+                a_status,
+                eingeplant,
+                soll_menge_sek,
+                gut_sek
+            FROM {VIEW_FULLNAME}
+            WHERE masch_nr = ?
+            ORDER BY erranf_dat DESC, erranf_zeit DESC
+        """
+        raw = pd.read_sql(sql, conn, params=(machine,))
+
+    print(machine, "NO FILTERS rows:", len(raw))
+    if raw.empty:
+        print("Brak danych w DB")
+        return
+
+    print("Vorgang:", raw["Vorgang"].value_counts().to_dict())
+    print("a_status:", raw["a_status"].value_counts().to_dict())
+    print("eingeplant:", raw["eingeplant"].value_counts().to_dict())
+
 
 
 def normalize_db_df(df: pd.DataFrame) -> pd.DataFrame:
