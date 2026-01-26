@@ -20,6 +20,7 @@ def _pick_driver() -> str:
 driver = _pick_driver()
 
 def _connect() -> pyodbc.Connection:
+    driver = _pick_driver()  # <- dopiero teraz, na żądanie
     # Uwaga: czasem w firmach jest driver 17 albo 18.
     conn_str = (
         f"DRIVER={{{driver}}};"

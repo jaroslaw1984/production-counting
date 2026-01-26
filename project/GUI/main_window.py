@@ -515,7 +515,7 @@ def run_app():
         try:
             machines = fetch_available_machines()
         except Exception as e:
-            messagebox.showerror("DB error", str(e))
+            messagebox.showerror("Brak sterownika ODBC / brak dostępu do sieci firmowej \n\n Możesz użyć trybu: Wczytaj plik (Excel", str(e))
             return
 
         show_machine_select_popup(machines, calculate_from_db)
