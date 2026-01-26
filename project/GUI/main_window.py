@@ -61,6 +61,7 @@ def run_app():
     left = customtkinter.CTkFrame(root)
     left.grid(row=0, column=0, sticky="ns", padx=10, pady=10)
     left.grid_columnconfigure(0, weight=1) # tylko góra-dół
+    left.grid_rowconfigure(98, weight=1)  # push przyciski do góry
 
 # 3) Prawa część (rośnie w obie strony 
     right = customtkinter.CTkFrame(root)
@@ -603,6 +604,7 @@ def run_app():
             d += timedelta(days=1)
         return d
     
+    # zwraca liczbę zmian danego dnia
     def shifts_per_day_for_date(d: date, include_weekends: bool) -> int:
         """
         Zwraca liczbę zmian danego dnia:
@@ -614,32 +616,7 @@ def run_app():
             return 1
         return SHIFTS_PER_DAY  # u Ciebie = 3
 
-    # dodaje określoną liczbę zmian do daty i zmiany startowej
-    # def add_shifts(start_date: date, start_shift: int, shifts_count: int, include_weekends: bool) -> tuple[date, int]:
-    #     """
-    #     Zwraca (end_date, end_shift) po wykonaniu shifts_count zmian,
-    #     startując od start_date i start_shift (1..SHIFTS_PER_DAY).
-    #     """
-    #     if shifts_count <= 0:
-    #         return start_date, start_shift
-
-    #     d = start_date
-    #     s = start_shift
-
-    #     # koniec jest na shifts_count-tej zmianie, więc przesuwamy slot shifts_count-1 razy
-    #     moves = shifts_count - 1
-
-    #     for _ in range(moves):
-    #         s += 1
-    #         if s > SHIFTS_PER_DAY:
-    #             s = 1
-    #             if include_weekends:
-    #                 d += timedelta(days=1)
-    #             else:
-    #                 d = next_workday(d)
-
-    #     return d, s
-
+    # zwraca (end_date, end_shift) po wykonaniu shifts_count zmian
     def add_shifts(start_date: date, start_shift: int, shifts_count: int, include_weekends: bool) -> tuple[date, int]:
         """
         Zwraca (end_date, end_shift) po wykonaniu shifts_count zmian,
@@ -1460,6 +1437,51 @@ def run_app():
         text.insert("end", df.head(50).to_string(index=False))
         text.configure(state="disabled")
         _upadate_placeholder_visibility()
+
+    def show_about_popup(parent):
+        popup = customtkinter.CTkToplevel(parent)
+        popup.title("O programie")
+        popup.resizable(False, False)
+        popup.grab_set()
+
+        text = (
+            "Policz produkcję\n\n"
+            "Program do szacowania czasu trwania produkcji\n"
+            "na podstawie danych z bazy danych lub plików Excel.\n\n"
+            "Autor: Jarosław Sochacki\n\n"
+            "Email firmowy: JSochacki@salamander-windows.com\n"
+            "Email prywatny: inz.jaroslaw.sochacki@gmail.com\n\n"
+            "Wersja: 1.0.0\n"
+            "Rok: 2026"
+        )
+
+        label = customtkinter.CTkLabel(
+            popup,
+            text=text,
+            justify="center",
+            wraplength=360,
+            font=customtkinter.CTkFont(size=13)
+        )
+        label.pack(padx=20, pady=20)
+
+        customtkinter.CTkButton(
+            popup,
+            text="OK",
+            command=popup.destroy
+        ).pack(pady=(0, 15))
+
+        try:
+            center_popup(parent, popup)
+        except Exception:
+            pass
+        
+    about_btn = customtkinter.CTkButton(
+    left,
+    text="O programie",
+    command=lambda: show_about_popup(root)
+    )
+    about_btn.grid(row=99, column=0, pady=(0, 10), sticky="ew")
+
 
 
     # funkcja czyszczenia textboxa
