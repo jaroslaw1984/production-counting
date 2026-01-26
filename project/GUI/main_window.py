@@ -602,30 +602,87 @@ def run_app():
         while d.weekday() >= 5:  # 5=sob, 6=nd
             d += timedelta(days=1)
         return d
+    
+    def shifts_per_day_for_date(d: date, include_weekends: bool) -> int:
+        """
+        Zwraca liczbę zmian danego dnia:
+        - pn-pt: 3 zmiany
+        - sob-nd: 1 zmiana (tylko jeśli include_weekends=True)
+        - sob-nd przy include_weekends=False i tak nie powinny wystąpić (bo skaczemy po workday)
+        """
+        if include_weekends and d.weekday() >= 5:  # 5=sob, 6=nd
+            return 1
+        return SHIFTS_PER_DAY  # u Ciebie = 3
 
     # dodaje określoną liczbę zmian do daty i zmiany startowej
+    # def add_shifts(start_date: date, start_shift: int, shifts_count: int, include_weekends: bool) -> tuple[date, int]:
+    #     """
+    #     Zwraca (end_date, end_shift) po wykonaniu shifts_count zmian,
+    #     startując od start_date i start_shift (1..SHIFTS_PER_DAY).
+    #     """
+    #     if shifts_count <= 0:
+    #         return start_date, start_shift
+
+    #     d = start_date
+    #     s = start_shift
+
+    #     # koniec jest na shifts_count-tej zmianie, więc przesuwamy slot shifts_count-1 razy
+    #     moves = shifts_count - 1
+
+    #     for _ in range(moves):
+    #         s += 1
+    #         if s > SHIFTS_PER_DAY:
+    #             s = 1
+    #             if include_weekends:
+    #                 d += timedelta(days=1)
+    #             else:
+    #                 d = next_workday(d)
+
+    #     return d, s
+
     def add_shifts(start_date: date, start_shift: int, shifts_count: int, include_weekends: bool) -> tuple[date, int]:
         """
         Zwraca (end_date, end_shift) po wykonaniu shifts_count zmian,
-        startując od start_date i start_shift (1..SHIFTS_PER_DAY).
+        startując od start_date i start_shift.
+
+        Zasada: jeśli include_weekends=True to w sob/nd jest tylko 1 zmiana.
         """
         if shifts_count <= 0:
             return start_date, start_shift
 
         d = start_date
-        s = start_shift
+
+        # jeżeli NIE liczymy weekendów, to start_date w weekend przepchnij na poniedziałek
+        if not include_weekends and d.weekday() >= 5:
+            d = next_workday(d)
+
+        # normalizacja start_shift (np. start w weekend i ktoś wybrał zmianę 2/3 -> spada do 1)
+        max_shifts_today = shifts_per_day_for_date(d, include_weekends)
+        s = int(start_shift)
+        if s < 1:
+            s = 1
+        if s > max_shifts_today:
+            s = 1
 
         # koniec jest na shifts_count-tej zmianie, więc przesuwamy slot shifts_count-1 razy
         moves = shifts_count - 1
 
         for _ in range(moves):
+            max_shifts_today = shifts_per_day_for_date(d, include_weekends)
+
             s += 1
-            if s > SHIFTS_PER_DAY:
+            if s > max_shifts_today:
+                # przechodzimy na następny dzień
                 s = 1
                 if include_weekends:
                     d += timedelta(days=1)
                 else:
                     d = next_workday(d)
+
+                # po zmianie dnia, jeśli weekendy wliczamy, max zmian może być 1
+                max_shifts_today = shifts_per_day_for_date(d, include_weekends)
+                if s > max_shifts_today:
+                    s = 1
 
         return d, s
 
