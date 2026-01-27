@@ -445,7 +445,8 @@ def run_app():
             lines.append(f"Czas zbrojeń: {setup_min:.0f} min")
             lines.append(f"Zmiany (8h): {shifts_exact:.2f} → {shifts_rounded}")
             lines.append(f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}")
-            lines.append(f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s})\n")
+            lines.append("---------------------------------------------------------------------")
+            lines.append(f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n")
 
         return "\n".join(lines)
        
@@ -1208,7 +1209,7 @@ def run_app():
             include_weekends=include_weekends
 )
         
-        end_line = f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s})\n"
+        end_line = f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n"
 
         result_text = (
             f"Stanowisko:   {workplace}\n"
@@ -1223,6 +1224,7 @@ def run_app():
             f"--------------------------------\n"
             f"Zmiany (8h):  {shifts:.2f}\n"
             f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}\n"
+            f"---------------------------------------------------------------------\n"
             f"{end_line}"
         )
 
