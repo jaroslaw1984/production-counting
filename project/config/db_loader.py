@@ -85,7 +85,6 @@ def fetch_orders_for_machines(machines: list[str]) -> pd.DataFrame:
 def debug_machine_filters(machine: str):
     # wersja Z FILTRAMI (czyli to co robi program)
     df = fetch_orders_for_machines([machine])
-    print(machine, "WITH FILTERS rows:", len(df))
 
     # wersja BEZ filtrów – surowa prawda z DB
     with _connect() as conn:
@@ -103,17 +102,7 @@ def debug_machine_filters(machine: str):
         """
         raw = pd.read_sql(sql, conn, params=(machine,))
 
-    print(machine, "NO FILTERS rows:", len(raw))
-    if raw.empty:
-        print("Brak danych w DB")
-        return
-
-    print("Vorgang:", raw["Vorgang"].value_counts().to_dict())
-    print("a_status:", raw["a_status"].value_counts().to_dict())
-    print("eingeplant:", raw["eingeplant"].value_counts().to_dict())
-
-
-
+# Zwraca DF w formacie "jak do liczenia":
 def normalize_db_df(df: pd.DataFrame) -> pd.DataFrame:
     """
     Zwraca DF w formacie "jak do liczenia":
