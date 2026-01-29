@@ -1477,6 +1477,7 @@ def run_app():
         popup.resizable(False, False)
         popup.grab_set()
         
+        # import danych o wersji programu z pliku version.py
         from project.config.version import (
             PROGRAM_NAME,
             PROGRAM_VERSION,
