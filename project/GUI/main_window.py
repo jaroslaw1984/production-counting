@@ -1476,16 +1476,25 @@ def run_app():
         popup.title("O programie")
         popup.resizable(False, False)
         popup.grab_set()
+        
+        from project.config.version import (
+            PROGRAM_NAME,
+            PROGRAM_VERSION,
+            PROGRAM_YEAR,
+            PROGRAM_AUTHOR,
+            DESCRIPTION,
+            COMPANY_MAIL,
+            PRIVATE_MAIL
+            
+        )        
 
         text = (
-            "Policz produkcję\n\n"
-            "Program do szacowania czasu trwania produkcji\n"
-            "na podstawie danych z bazy danych lub plików Excel.\n\n"
-            "Autor: Jarosław Sochacki\n\n"
-            "Email firmowy: JSochacki@salamander-windows.com\n"
-            "Email prywatny: inz.jaroslaw.sochacki@gmail.com\n\n"
-            "Wersja: 1.0.0\n"
-            "Rok: 2026"
+            f"{PROGRAM_NAME} \n\n"
+            f"{DESCRIPTION}"
+            f"Email firmowy: {COMPANY_MAIL}\n"
+            f"Email prywatny: {PRIVATE_MAIL}\n\n"
+            f"Wersja: {PROGRAM_VERSION}\n\n"
+            f"© Rok: {PROGRAM_YEAR} {PROGRAM_AUTHOR} "
         )
 
         label = customtkinter.CTkLabel(
