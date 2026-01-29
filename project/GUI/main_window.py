@@ -13,6 +13,9 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Dict, Any
 from pathlib import Path
 from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df
+from project.config.workplace_config_provider import merge_db_and_csv_config
+from project.config.count_per_loader import update_count_by_shift
+
 
 # stała ścieżka do pliku konfiguracyjnego
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -350,6 +353,21 @@ def run_app():
                     app_state["machine_cfg"] = df_mc_df
                     save_machine_config(df_mc_df, MACHINE_CONFIG_PATH)
                     
+                    # spróbuj zaktualizować DB jeśli DB jest źródłem
+                    if app_state.get("machine_cfg_source") in ("db", "db+csv"):
+                        try:
+                            for m, _, new_val in changes:
+                                update_count_by_shift(m, new_val)
+                        except Exception as e:
+                            messagebox.showwarning(
+                                "Uwaga",
+                                "Zapisano do pliku, ale nie udało się zaktualizować bazy (brak uprawnień lub błąd połączenia).\n\n"
+                                f"Szczegóły: {e}"
+                            )
+                    df_cfg, source, missing = merge_db_and_csv_config(sync_missing_to_db=False)
+                    app_state["machine_cfg"] = df_cfg
+                    app_state["machine_cfg_source"] = source
+                    
             popup.destroy()
             on_confirm(selected, pps_by_machine)
 
@@ -514,8 +532,21 @@ def run_app():
 
     # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
     def loading_machine_data(parent):
+        # wczytaj konfigurację maszyn (DB + CSV)
+        df_cfg, source, missing = merge_db_and_csv_config(sync_missing_to_db=False)
+        app_state["machine_cfg"] = df_cfg
+        app_state["machine_cfg_source"] = source
+                
         try:
             machines = fetch_available_machines()
+            if source == "db+csv":
+                # lepiej status w pasku, ale możesz też messagebox (tylko raz)
+                result_var.set(f"Konfiguracja: DB + CSV (brak w DB: {len(missing)})")
+            elif source == "db":
+                result_var.set("Konfiguracja: DB")
+            else:
+                result_var.set("Konfiguracja: CSV (fallback)")
+                        
         except Exception as e:
             messagebox.showerror("Brak sterownika ODBC / brak dostępu do sieci firmowej \n\n Możesz użyć trybu: Wczytaj plik (Excel", str(e))
             return
