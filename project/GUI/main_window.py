@@ -242,6 +242,7 @@ def run_app():
         # --- SAP -> mapy ilości ---
         sap_qty = {}
         sap_jm = {}
+        sap_szt = {}
         sap_user = None
         sap_date = None
         
@@ -260,10 +261,9 @@ def run_app():
 
         for _, r in df_sap.iterrows():
             idx = str(r["INDEKS"]).strip()
-            qty = r["ILOSC"]
-            jm = str(r.get("JM", "M")).strip()
 
-            # qty może być stringiem z przecinkiem, zabezpieczenie:
+            # --- ILOŚĆ (metry) ---
+            qty = r["ILOSC"]
             if isinstance(qty, str):
                 qty = qty.replace(",", ".")
             try:
@@ -271,13 +271,26 @@ def run_app():
             except Exception:
                 qty = 0.0
 
+            # --- SZTUKI ---
+            szt = r.get("IL_SZT", 0)
+            try:
+                szt = int(szt)
+            except Exception:
+                szt = 0
+
+            # --- JM ---
+            jm = str(r.get("JM", "M")).strip()
+
+            # --- sumowanie ---
             sap_qty[idx] = sap_qty.get(idx, 0.0) + qty
+            sap_szt[idx] = sap_szt.get(idx, 0) + szt
             sap_jm[idx] = jm
 
             if sap_user is None and "USER" in df_sap.columns:
                 sap_user = str(r["USER"]).strip()
             if sap_date is None and "DATA" in df_sap.columns:
                 sap_date = str(r["DATA"]).strip()
+
 
         # --- budowa raportu w kolejności Hydry ---
         seq_set = set(seq)
@@ -296,6 +309,7 @@ def run_app():
                 continue  # nie do przygotowania
 
             qty = float(sap_qty.get(gp, 0.0))
+            szt = int(sap_szt.get(gp, 0))
             jm = sap_jm.get(gp, "M")
 
             # jeśli już pokazywaliśmy ten indeks i ilość jest identyczna -> pomiń
@@ -306,7 +320,8 @@ def run_app():
             status = "OK" if gp not in shown_qty else "ZMIANA ILOŚCI"
             shown_qty[gp] = qty
 
-            lines.append(f"{lp:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}   {status}")
+            lines.append(f"{lp:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}  {szt:>6}")
+
             lp += 1
 
 
@@ -323,8 +338,8 @@ def run_app():
         meta_txt = " | ".join(meta) + "\n\n"
 
         report_text = header + meta_txt
-        report_text += "LP  INDEKS               ILOŚĆ       JM   STATUS\n"
-        report_text += "-" * 55 + "\n"
+        report_text += "LP  INDEKS               ILOŚĆ       M   SZT\n"
+        report_text += "-" * 48 + "\n"
         report_text += "\n".join(lines)
 
         if extras_not_in_sap:
