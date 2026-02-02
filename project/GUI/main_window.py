@@ -7,14 +7,14 @@ import warnings
 import os
 import tempfile
 import re
-from ..config.db_loader import fetch_available_machines
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Dict, Any
 from pathlib import Path
-from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df
+from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df, fetch_sap_basic_profiles
 from project.config.workplace_config_provider import merge_db_and_csv_config
 from project.config.count_per_loader import update_count_by_shift
+
 
 
 # stała ścieżka do pliku konfiguracyjnego
@@ -23,12 +23,32 @@ CONFING_PATH = BASE_DIR / "config" / "profile_config.csv"
 MACHINE_CONFIG_PATH = BASE_DIR / "config" / "machine_config.csv"
 SHIFTS_PER_DAY = 3
 
+ORDER_ALIASES = [
+    "zlecenie", "nr zlecenia", "zlecenie nr",
+    "auftrag", "auftragsnr", "auftragsnummer",
+    "order", "order id"
+]
+
+GRUNDPROFIL_ALIASES = [
+    "grundprofil", "grund profil", "grund-profil",
+    "podkład", "podklad", "profil podstawowy"
+]
+
+
 # ignore specific pandas warning about SQLAlchemy
 warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy connectable*")  
 
 # --- INTERFEJS GRAFICZNY (GUI) ---
 def run_app():
-    app_state: dict[str, Any] = {"df": None, "table_frame": None, "cfg": None, "current_view_df": None} # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
+    app_state: dict[str, Any] = {
+        "df": None,
+        "df_hydra": None,
+        "hydra_path": None,
+        "cfg": None,
+        "machine_cfg": None,
+        "table_frame": None,
+        "last_report_text": "",
+        } # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
 
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
     customtkinter.set_default_color_theme("dark-blue")  # Motywy: "blue" (domyślny), "green", "dark-blue"
@@ -89,6 +109,226 @@ def run_app():
         else:
             print_btn.place_forget()
 
+    def _norm(text: str) -> str:
+        return " ".join(str(text).replace("\xa0", " ").strip().lower().split())
+
+
+    def _contains_any(cell_text: str, aliases: list[str]) -> bool:
+        t = _norm(cell_text)
+        return any(a in t for a in aliases)
+
+
+    def detect_header_row(xlsx_path: str, max_scan_rows: int = 40) -> int:
+        raw = pd.read_excel(xlsx_path, engine="openpyxl", header=None, nrows=max_scan_rows)
+        for r in range(len(raw)):
+            row = raw.iloc[r].astype(str).tolist()
+            has_order = any(_contains_any(c, ORDER_ALIASES) for c in row)
+            has_gp = any(_contains_any(c, GRUNDPROFIL_ALIASES) for c in row)
+            if has_order and has_gp:
+                return r
+        raise ValueError("Nie wykryłem wiersza nagłówków (brak Zlecenie/Auftrag lub Grundprofil).")
+
+
+    def find_column(df: pd.DataFrame, aliases: list[str]) -> str:
+        for col in df.columns:
+            if _contains_any(col, aliases):
+                return col
+        raise ValueError(f"Nie znalazłem kolumny pasującej do aliasów: {aliases}")
+
+
+    def load_hydra_queue(xlsx_path: str) -> pd.DataFrame:
+        header_row = detect_header_row(xlsx_path)
+        df = pd.read_excel(xlsx_path, engine="openpyxl", header=header_row)
+
+        # normalizacja kolumn
+        df.columns = [" ".join(str(c).replace("\xa0", " ").strip().split()) for c in df.columns]
+
+        order_col = find_column(df, ORDER_ALIASES)
+        gp_col = find_column(df, GRUNDPROFIL_ALIASES)
+
+        out = df[[order_col, gp_col]].copy()
+        out = out.rename(columns={order_col: "order_id", gp_col: "grundprofil"})
+        out["order_id"] = out["order_id"].astype("string").str.strip()
+        out["grundprofil"] = out["grundprofil"].astype("string").str.strip()
+        out = out[(out["order_id"] != "") & (out["grundprofil"] != "")]
+        return out.reset_index(drop=True)
+
+
+    def _normalize_order_id(s: str) -> str:
+        s = str(s).strip()
+        s = re.sub(r"\.0$", "", s)      # usuń końcówkę .0
+        s = s.lstrip("0")              # usuń zera z przodu (do porównań)
+        return s if s != "" else "0"
+
+
+    def cut_from_order(df: pd.DataFrame, start_order_id: str) -> pd.DataFrame:
+        start_norm = _normalize_order_id(start_order_id)
+
+        # zrób kolumnę pomocniczą do porównania
+        tmp = df.copy()
+        tmp["_order_norm"] = tmp["order_id"].map(_normalize_order_id)
+
+        hits = tmp.index[tmp["_order_norm"] == start_norm].tolist()
+        if not hits:
+            # debug pomocny: pokaż 10 pierwszych zleceń jakie program widzi
+            sample = tmp["order_id"].head(10).tolist()
+            raise ValueError(
+                f"Nie znaleziono startowego zlecenia: {start_order_id}\n"
+                f"(dla porównania: pierwsze zlecenia w pliku: {sample})"
+            )
+
+        return df.loc[hits[0]:].reset_index(drop=True)
+
+
+    def build_sequence(df: pd.DataFrame) -> list[str]:
+        # usuwa tylko duplikaty obok siebie (bezpiecznik)
+        seq = df["grundprofil"].tolist()
+        out = []
+        prev = None
+        for gp in seq:
+            if gp == prev:
+                continue
+            out.append(gp)
+            prev = gp
+        return out
+
+    def ask_start_order_popup(parent) -> str | None:
+        dialog = ctk.CTkInputDialog(text="Podaj startowe ZLECENIE nowej grupy:", title="Start zlecenia")
+        val = dialog.get_input()
+        if val is None:
+            return None
+        val = str(val).strip()
+        return val if val else None
+
+    def generate_logistics_report():
+        # 1) wybór pliku Hydry
+        file_path = filedialog.askopenfilename(
+            title="Wczytaj eksport Hydry (.xlsx)",
+            filetypes=[("Excel", "*.xlsx")]
+        )
+        if not file_path:
+            return
+
+        try:
+            df_hydra = load_hydra_queue(file_path)
+        except Exception as e:
+            messagebox.showerror("Błąd wczytania Hydry", str(e))
+            return
+
+        # 2) start zlecenia
+        start_order_id = ask_start_order_popup(root)  # root: Twoje okno główne
+        if not start_order_id:
+            return
+
+        try:
+            df_group = cut_from_order(df_hydra, start_order_id)
+        except Exception as e:
+            messagebox.showerror("Błąd startu grupy", str(e))
+            return
+
+        seq = build_sequence(df_group)
+ 
+        # 3) na MVP wypisz w oknie wynik
+        report_text = "=== Kolejność podstaw (Hydra) ===\n\n" + "\n".join(
+            f"{i+1}. {gp}" for i, gp in enumerate(seq)
+        )
+
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert("end", report_text)
+        text.configure(state="disabled")
+        _upadate_placeholder_visibility()        
+        
+        # --- SAP -> mapy ilości ---
+        sap_qty = {}
+        sap_jm = {}
+        sap_user = None
+        sap_date = None
+        
+        linia_value = "WLO-U006"
+        day_value = date.today()
+        
+        try:
+            df_sap = fetch_sap_basic_profiles(linia=linia_value, day=day_value)
+        except Exception as e:
+            messagebox.showerror("SAP/DB error", f"{type(e).__name__}: {e}")
+            return
+
+        if df_sap is None or df_sap.empty:
+            messagebox.showwarning("Brak danych SAP", f"Brak danych dla: {linia_value} / {day_value}")
+            return           
+
+        for _, r in df_sap.iterrows():
+            idx = str(r["INDEKS"]).strip()
+            qty = r["ILOSC"]
+            jm = str(r.get("JM", "M")).strip()
+
+            # qty może być stringiem z przecinkiem, zabezpieczenie:
+            if isinstance(qty, str):
+                qty = qty.replace(",", ".")
+            try:
+                qty = float(qty)
+            except Exception:
+                qty = 0.0
+
+            sap_qty[idx] = sap_qty.get(idx, 0.0) + qty
+            sap_jm[idx] = jm
+
+            if sap_user is None and "USER" in df_sap.columns:
+                sap_user = str(r["USER"]).strip()
+            if sap_date is None and "DATA" in df_sap.columns:
+                sap_date = str(r["DATA"]).strip()
+
+        # --- budowa raportu w kolejności Hydry ---
+        seq_set = set(seq)
+        missing_in_sap = []
+        lines = []
+
+        for i, gp in enumerate(seq, start=1):
+            qty = sap_qty.get(gp, 0.0)
+            jm = sap_jm.get(gp, "M")
+            if gp not in sap_qty:
+                missing_in_sap.append(gp)
+                status = "BRAK W SAP"
+            else:
+                status = "OK"
+            lines.append(f"{i:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}   {status}")
+
+        # --- pozycje w SAP, których nie ma w Hydrze (kolejność nieznana) ---
+        missing_in_hydra = [idx for idx in sap_qty.keys() if idx not in seq_set]
+
+        header = "RAPORT PODSTAW POD OKLEJANIE (SAP ułożony wg Hydry)\n"
+        meta = []
+        if sap_date: meta.append(f"Data: {sap_date}")
+        if sap_user: meta.append(f"Użytkownik: {sap_user}")
+        # linia_value ustawiasz w GUI albo na sztywno
+        meta.append(f"Linia: {linia_value}")
+        meta_txt = " | ".join(meta) + "\n\n"
+
+        report_text = header + meta_txt
+        report_text += "LP  INDEKS               ILOŚĆ       JM   STATUS\n"
+        report_text += "-" * 55 + "\n"
+        report_text += "\n".join(lines)
+
+        if missing_in_sap:
+            report_text += "\n\nW Hydrze, ale BRAK w SAP:\n"
+            report_text += "\n".join(f"- {x}" for x in missing_in_sap)
+
+        if missing_in_hydra:
+            report_text += "\n\nW SAP, ale BRAK w Hydrze (kolejność nieznana):\n"
+            report_text += "\n".join(f"- {x}  {sap_qty[x]:.1f} {sap_jm.get(x,'M')}" for x in missing_in_hydra)
+            
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert("end", report_text)
+        text.configure(state="disabled")
+        _upadate_placeholder_visibility()
+
+        app_state["last_report_text"] = report_text
+        _set_print_visible(True)   # jeśli masz przycisk druku ukrywany/pokazywany
+        
+
+            
 
     def print_current_report() -> None:
         full_text = app_state.get("last_report_text", "")
@@ -124,8 +364,14 @@ def run_app():
 
     # zmienna statusu i etykieta (wyświetlają liczbę wczytanych rekordów lub komunikaty)
     result_var = tk.StringVar(value="")
-    status_label = customtkinter.CTkLabel(left, textvariable=result_var, anchor="w")
-    status_label.grid(row=4, column=0, pady=(6, 0), sticky="ew")
+    status_label = customtkinter.CTkLabel(
+        left,
+        textvariable=result_var,
+        anchor="w",
+        justify="left",
+        wraplength=220  # dopasuj do szerokości lewego panelu
+    )
+    status_label.grid(row=97, column=0, padx=6, pady=(6, 6), sticky="ew")  
 
     def make_print_summary(report_text: str) -> str:
         """
@@ -552,8 +798,7 @@ def run_app():
             return
 
         show_machine_select_popup(machines, calculate_from_db)
-
-    
+  
     # funkcja przełączania motywu
     def change():
         if customtkinter.get_appearance_mode() == "Light":
@@ -1304,6 +1549,8 @@ def run_app():
                 return col
 
         raise ValueError("Nie znaleziono kolumny strony (20/21/22/23).")
+    # budujesz raport i pokazujesz / zapisujesz
+
 
 
     # funkcja obsługi wczytywania pliku
@@ -1317,7 +1564,7 @@ def run_app():
             ],
         )
         if not file_path:
-            return
+            return 
 
         try:
             ext = Path(file_path).suffix.lower()
@@ -1533,6 +1780,7 @@ def run_app():
         text.delete("1.0", "end")
         text.configure(state="disabled")
         result_var.set("")
+        app_state["last_report_text"] = ""
         _set_print_visible(False)
         _upadate_placeholder_visibility()
 
@@ -1545,13 +1793,16 @@ def run_app():
     load_machine_btn.grid(row=1, column=0, pady=(0, 10), sticky="ew")
     count_production_btn = customtkinter.CTkButton(left, text="Przelicz produkcję", command=calculate_production)
     count_production_btn.grid(row=2, column=0, pady=(0, 10), sticky="ew")
+    generate_report_btn = customtkinter.CTkButton(left, text="Generuj raport", command=generate_logistics_report)
+    generate_report_btn.grid(row=3, column=0, pady=(0, 10), sticky="ew")
+
     clean_btn = customtkinter.CTkButton(left, text="Wyczyść", command=clean_text)
-    clean_btn.grid(row=3, column=0, pady=(0, 10), sticky="ew")
+    clean_btn.grid(row=4, column=0, pady=(0, 10), sticky="ew")
     # umieść przycisk przełączania motywu w lewym panelu, aby pasował do pozostałych kontrolek
     # ustaw początkowy tekst zgodnie z aktualnym trybem wyglądu
 
     toogle_text = "Jasny motyw" if customtkinter.get_appearance_mode() == "Dark" else "Ciemny motyw"
     ch_theme = customtkinter.CTkButton(left, text=toogle_text, command=change)
-    ch_theme.grid(row=4, column=0, pady=(20, 10), sticky="ew")
+    ch_theme.grid(row=5, column=0, pady=(20, 10), sticky="ew")
 
     root.mainloop()
