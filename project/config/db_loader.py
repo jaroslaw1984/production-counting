@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import pandas as pd
 import pyodbc
+from datetime import date
 
 
 SERVER = r"sipdbprod\hydms1"
 DATABASE = "hydrawlo"
 VIEW_FULLNAME = "hydadm.SOP_Abfrage_Auftragsbestand_Sochacki"
+SAP_SERVER = "kronos.sip.local"
+SAP_DATABASE = "Raporty"
 
 
 def _pick_driver() -> str:
@@ -17,15 +20,15 @@ def _pick_driver() -> str:
             return name
     raise RuntimeError(f"No SQL Server ODBC driver found. Available: {drivers}")
 
-driver = _pick_driver()
+# driver = _pick_driver()
 
-def _connect() -> pyodbc.Connection:
+def _connect_hydra() -> pyodbc.Connection:
     driver = _pick_driver()  # <- dopiero teraz, na żądanie
     # Uwaga: czasem w firmach jest driver 17 albo 18.
     conn_str = (
         f"DRIVER={{{driver}}};"
-        r"SERVER=sipdbprod\hydms1;"
-        "DATABASE=hydrawlo;"
+        f"SERVER={SERVER};"
+        f"DATABASE={DATABASE};"
         "Trusted_Connection=yes;"
         "Encrypt=yes;"
         "TrustServerCertificate=yes;"
@@ -33,6 +36,17 @@ def _connect() -> pyodbc.Connection:
 
     return pyodbc.connect(conn_str)
 
+def _connect_sap() -> pyodbc.Connection:
+    driver = _pick_driver()
+    conn_str = (
+        f"DRIVER={{{driver}}};"
+        f"SERVER={SAP_SERVER};"
+        f"DATABASE={SAP_DATABASE};"
+        "Trusted_Connection=yes;"
+        "Encrypt=yes;"
+        "TrustServerCertificate=yes;"
+    )
+    return pyodbc.connect(conn_str)
 
 def fetch_available_machines() -> list[str]:
     sql = f"""
@@ -41,7 +55,7 @@ def fetch_available_machines() -> list[str]:
         WHERE masch_nr IS NOT NULL AND LTRIM(RTRIM(masch_nr)) <> ''
         ORDER BY masch_nr
     """
-    with _connect() as conn:
+    with _connect_hydra() as conn:
         df = pd.read_sql(sql, conn)
 
     return df["masch_nr"].astype("string").str.strip().dropna().tolist()
@@ -77,7 +91,7 @@ def fetch_orders_for_machines(machines: list[str]) -> pd.DataFrame:
           AND eingeplant = 'M'
     """
 
-    with _connect() as conn:
+    with _connect_hydra() as conn:
         df = pd.read_sql(sql, conn, params=tuple(machines))
 
     return df
@@ -87,7 +101,7 @@ def debug_machine_filters(machine: str):
     df = fetch_orders_for_machines([machine])
 
     # wersja BEZ filtrów – surowa prawda z DB
-    with _connect() as conn:
+    with _connect_hydra() as conn:
         sql = f"""
             SELECT TOP 200
                 masch_nr,
@@ -167,3 +181,23 @@ def normalize_db_df(df: pd.DataFrame) -> pd.DataFrame:
         ).clip(lower=0)
 
     return out
+
+def fetch_sap_basic_profiles(linia: str, day: date) -> pd.DataFrame:
+    sql = """
+        SELECT INDEKS, ILOSC, JM, IL_SZT, LINIA, DATA, [USER]
+        FROM dbo.HANA_ZMDRS_RAPORT
+        WHERE LINIA = ? AND CAST(DATA as date) = ?
+    """
+    with _connect_sap() as conn:
+        df = pd.read_sql(sql, conn, params=[linia, day])
+
+    # normalizacja ilości (przecinki)
+    df["INDEKS"] = df["INDEKS"].astype("string").str.strip()
+    df["ILOSC"] = (
+        df["ILOSC"].astype("string").str.replace(",", ".", regex=False)
+    )
+    df["ILOSC"] = pd.to_numeric(df["ILOSC"], errors="coerce").fillna(0.0)
+
+    return df
+
+    
