@@ -281,18 +281,35 @@ def run_app():
 
         # --- budowa raportu w kolejności Hydry ---
         seq_set = set(seq)
-        missing_in_sap = []
         lines = []
+        
+        # --- WERSJA DOCZELOWA: nie pokazuj powtórek jeśli ilość ta sama ---
+        lines = []
+        extras_not_in_sap = []
 
-        for i, gp in enumerate(seq, start=1):
-            qty = sap_qty.get(gp, 0.0)
-            jm = sap_jm.get(gp, "M")
+        shown_qty: dict[str, float] = {}   # INDEKS -> ostatnia pokazana ilość
+        lp = 1
+
+        for gp in seq:
             if gp not in sap_qty:
-                missing_in_sap.append(gp)
-                status = "BRAK W SAP"
-            else:
-                status = "OK"
-            lines.append(f"{i:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}   {status}")
+                extras_not_in_sap.append(gp)
+                continue  # nie do przygotowania
+
+            qty = float(sap_qty.get(gp, 0.0))
+            jm = sap_jm.get(gp, "M")
+
+            # jeśli już pokazywaliśmy ten indeks i ilość jest identyczna -> pomiń
+            if gp in shown_qty and abs(shown_qty[gp] - qty) < 1e-9:
+                continue
+
+            # jeśli był już pokazany, ale ilość się zmieniła -> pokaż jako zmiana
+            status = "OK" if gp not in shown_qty else "ZMIANA ILOŚCI"
+            shown_qty[gp] = qty
+
+            lines.append(f"{lp:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}   {status}")
+            lp += 1
+
+
 
         # --- pozycje w SAP, których nie ma w Hydrze (kolejność nieznana) ---
         missing_in_hydra = [idx for idx in sap_qty.keys() if idx not in seq_set]
@@ -310,9 +327,9 @@ def run_app():
         report_text += "-" * 55 + "\n"
         report_text += "\n".join(lines)
 
-        if missing_in_sap:
+        if extras_not_in_sap:
             report_text += "\n\nW Hydrze, ale BRAK w SAP:\n"
-            report_text += "\n".join(f"- {x}" for x in missing_in_sap)
+            report_text += "\n".join(f"- {x}" for x in extras_not_in_sap)
 
         if missing_in_hydra:
             report_text += "\n\nW SAP, ale BRAK w Hydrze (kolejność nieznana):\n"
