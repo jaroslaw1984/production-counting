@@ -256,8 +256,20 @@ def run_app():
         linia_cb.pack(anchor="w", padx=12, pady=(0, 10))
 
         ctk.CTkLabel(popup, text="Startowe zlecenie nowej grupy:").pack(anchor="w", padx=12, pady=(0, 4))
+        def only_digits(new_value: str) -> bool:
+            # pozwalamy na pusty (user jeszcze pisze)
+            return new_value.isdigit() or new_value == ""
+
+        vcmd = popup.register(only_digits)
+
         start_var = tk.StringVar(value="")
-        start_entry = ctk.CTkEntry(popup, textvariable=start_var, width=260)
+        start_entry = ctk.CTkEntry(
+            popup,
+            textvariable=start_var,
+            width=260,
+            validate="key",
+            validatecommand=(vcmd, "%P")
+        )
         start_entry.pack(anchor="w", padx=12, pady=(0, 12))
         start_entry.focus_set()
 
@@ -266,11 +278,15 @@ def run_app():
             linia = (linia_var.get() or "").strip().upper()
             start_order_id = (start_var.get() or "").strip()
 
-            if not linia:
-                messagebox.showwarning("Brak linii", "Wybierz linię.")
-                return
             if not start_order_id:
                 messagebox.showwarning("Brak zlecenia", "Podaj startowe zlecenie.")
+                return
+
+            if not start_order_id.isdigit():
+                messagebox.showwarning(
+                    "Błędna wartość",
+                    "Startowe zlecenie musi składać się wyłącznie z cyfr."
+                )
                 return
 
             result = {"linia": linia, "start_order_id": start_order_id}
