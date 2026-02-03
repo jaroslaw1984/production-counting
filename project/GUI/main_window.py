@@ -51,6 +51,7 @@ def run_app():
         "table_frame": None,
         "last_report_text": "",
         "last_report_data": None,
+        "last_report_kind": None,
         } # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
 
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
@@ -124,22 +125,25 @@ def run_app():
 
     
     def _set_print_visible(visible: bool) -> None:
-        """Pokazuje/ukrywa przyciski raportu (Drukuj/Edytuj)."""
-        if visible:
-            # Drukuj w prawym dolnym rogu
+        kind = app_state.get("last_report_kind")
+
+        # Drukuj: pokazuj dla "sap" ORAZ dla "db"
+        can_print = visible and (kind in ("sap", "db"))
+
+        # Edytuj: tylko dla "sap"
+        can_edit = visible and (kind == "sap")
+
+        if can_print:
             print_btn.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-20)
-            # Edytuj tuż nad nim
-            try:
-                edit_btn.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-60)
-            except Exception:
-                pass
         else:
             print_btn.place_forget()
-            try:
-                edit_btn.place_forget()
-            except Exception:
-                pass
 
+        if can_edit:
+            edit_btn.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-60)
+        else:
+            edit_btn.place_forget()
+
+            
     def _norm(text: str) -> str:
         return " ".join(str(text).replace("\xa0", " ").strip().lower().split())
 
@@ -222,14 +226,6 @@ def run_app():
             out.append(gp)
             prev = gp
         return out
-
-    # def ask_start_order_popup(parent) -> str | None:
-    #     dialog = ctk.CTkInputDialog(text="Podaj startowe ZLECENIE nowej grupy:", title="Start zlecenia")
-    #     val = dialog.get_input()
-    #     if val is None:
-    #         return None
-    #     val = str(val).strip()
-    #     return val if val else None
    
     def ask_report_params_popup(parent) -> dict | None:
         """
@@ -466,12 +462,15 @@ def run_app():
         text.insert("end", report_text)
         text.configure(state="disabled")
         _upadate_placeholder_visibility()
-
+        
         app_state["last_report_text"] = report_text
+        app_state["last_report_kind"] = "sap"
 
         # Dane strukturalne pod DOCX (layout jak w Wordzie)
+        end_by_machine = app_state.get("end_by_machine", {}) or {}
+        shift_line = end_by_machine.get(linia_value, "")
         app_state["last_report_data"] = {
-            "shift_info": f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
+            "shift_info": shift_line if shift_line else f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
             "report_date": str(date.today()),
             "user": sap_user or "",
             "line": linia_value,
@@ -482,9 +481,7 @@ def run_app():
         _set_print_visible(True)   # jeśli masz przycisk druku ukrywany/pokazywany
         
 
-            
-
-    
+     # --- funkcje eksportu/drukowania/edycji raportu DOCX ---       
     def export_report_docx(report_data: dict, template_path: Path | None = None) -> Path:
         """Generuje DOCX na bazie template. Zwraca ścieżkę do wygenerowanego pliku."""
         if not report_data:
@@ -496,11 +493,6 @@ def run_app():
         if not template_path.exists():
             raise FileNotFoundError(f"Brak szablonu DOCX: {template_path}")
         
-        print("TEMPLATE:", template_path)
-        print("EXISTS:", template_path.exists())
-        print("MTIME:", datetime.fromtimestamp(template_path.stat().st_mtime))
-        
-
         doc = Document(str(template_path))
 
         def replace_all(old: str, new: str) -> None:
@@ -572,7 +564,7 @@ def run_app():
         doc.save(str(out_path))
         return out_path
 
-
+    # helper: otwiera plik DOCX w domyślnej aplikacji
     def open_docx(path: Path) -> None:
         try:
             os.startfile(str(path))  # Windows
@@ -580,7 +572,7 @@ def run_app():
             messagebox.showerror("Błąd", f"Nie udało się otworzyć pliku:\n{e}")
 
 
-
+    # helper: drukuje plik DOCX
     def print_docx(path: Path) -> None:
         try:
             os.startfile(str(path), "print")  # Windows
@@ -588,31 +580,41 @@ def run_app():
             messagebox.showerror("Błąd druku", f"Nie udało się uruchomić druku:{e}")
 
 
-
+    # helper: drukuje aktualny raport
     def print_current_report() -> None:
-            report_data = app_state.get("last_report_data")
-            if not report_data:
-                # fallback: drukuj dokładnie to, co widać (tekst)
-                report_text = app_state.get("last_report_text", "")
-                if not report_text.strip():
-                    messagebox.showwarning("Brak raportu", "Nie ma nic do wydrukowania.")
-                    _set_print_visible(False)
-                    return
-                try:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as f:
-                        f.write(report_text)
-                        path = f.name
-                    os.startfile(path, "print")  # Windows
-                except Exception as e:
-                    messagebox.showerror("Błąd druku", f"Nie udało się uruchomić druku:\n{e}")
-                return
+        kind = app_state.get("last_report_kind")  # "db" albo "sap"
+        report_text_full = app_state.get("last_report_text", "")
 
+        # 1) SAP -> druk DOCX (jeśli masz last_report_data)
+        if kind == "sap" and app_state.get("last_report_data"):
             try:
-                docx_path = export_report_docx(report_data)
+                docx_path = export_report_docx(app_state["last_report_data"])
                 print_docx(docx_path)
             except Exception as e:
-                messagebox.showerror("Błąd druku", f"Nie udało się przygotować/drukować DOCX:\n{e}")
-    
+                messagebox.showerror("Błąd druku", f"Nie udało się drukować DOCX:\n{e}")
+            return
+
+        # 2) DB -> drukuj skrót (jak w starej wersji)
+        if kind == "db":
+            report_to_print = make_print_summary(report_text_full)
+        else:
+            # fallback: drukuj to co jest (np. inne tryby)
+            report_to_print = report_text_full
+
+        if not report_to_print.strip():
+            messagebox.showwarning("Brak raportu", "Nie ma nic do wydrukowania.")
+            _set_print_visible(False)
+            return
+
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as f:
+                f.write(report_to_print)
+                path = f.name
+            os.startfile(path, "print")  # Windows
+        except Exception as e:
+            messagebox.showerror("Błąd druku", f"Nie udało się uruchomić druku:\n{e}")
+
+    # helper: edytuje aktualny raport (tylko SAP)
     def edit_current_report() -> None:
         report_data = app_state.get("last_report_data")
         if not report_data:
@@ -625,7 +627,6 @@ def run_app():
         except Exception as e:
             messagebox.showerror("Błąd edycji", f"Nie udało się przygotować/otworzyć DOCX:\n{e}")
       
-
 
     # placeholder (nakładana etykieta wewnątrz Textboxa)
     placeholder_text = "Program do obliczania produkcji \n\n1. Kliknij „Wczytaj maszyny”, aby pobrać aktualne zlecenia z bazy danych.\n\n 2. Wybierz maszyny do przeliczenia i ustaw sztuki na zmianę. \n\n 3. Kliknij „Przelicz produkcję”, aby sprawdzić, \n\n do której zmiany i dnia potrwa produkcja. \n\n Opcjonalnie: \n\n – „Wczytaj plik” umożliwia przeliczenie produkcji z pliku Excel (.xlsx, .xls), \n\n jeśli baza danych jest niedostępna."
@@ -644,6 +645,7 @@ def run_app():
     )
     status_label.grid(row=97, column=0, padx=6, pady=(6, 6), sticky="ew")  
 
+    # helper: tworzy skrócony raport do druku z pełnego raportu DB
     def make_print_summary(report_text: str) -> str:
         """
         Z pełnego raportu wycina tylko:
@@ -1045,7 +1047,25 @@ def run_app():
         _upadate_placeholder_visibility()
 
         app_state["last_report_text"] = report
-        _set_print_visible(bool(report.strip()))
+        app_state["last_report_kind"] = "db"
+        app_state["last_report_data"] = None  # żeby nie próbował DOCX
+        _set_print_visible(True)
+        
+        # --- wyciągnij z raportu DB daty zakończenia dla maszyn ---
+        end_by_machine = {}
+        current_machine = None
+
+        for line in report.splitlines():
+            m = re.match(r"^===\s*(.+?)\s*===$", line.strip())
+            if m:
+                current_machine = m.group(1).strip()
+                continue
+
+            if current_machine and line.strip().startswith("Produkcja będzie trwać do:"):
+                end_by_machine[current_machine] = line.strip()
+
+        app_state["end_by_machine"] = end_by_machine
+
 
     # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
     def loading_machine_data(parent):
@@ -2046,6 +2066,8 @@ def run_app():
         text.delete("1.0", "end")
         text.configure(state="disabled")
         result_var.set("")
+        app_state["last_report_kind"] = None
+        app_state["last_report_data"] = None
         app_state["last_report_text"] = ""
         _set_print_visible(False)
         _upadate_placeholder_visibility()
