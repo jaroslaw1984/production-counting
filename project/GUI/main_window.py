@@ -417,12 +417,9 @@ def run_app():
         
         # --- WERSJA DOCZELOWA: nie pokazuj powtórek jeśli ilość ta sama ---
         lines = []
-        extras_not_in_sap = []
-        missing_seen = set() # by nie duplikować wpisów
-        
         shown_qty: dict[str, float] = {}   # INDEKS -> ostatnia pokazana ilość
         rows = []
-        lp = 1
+        lp = 1       
 
         for gp in seq:
             if gp not in sap_qty:
@@ -449,8 +446,22 @@ def run_app():
 
             lp += 1
 
-        # --- pozycje w SAP, których nie ma w Hydrze (kolejność nieznana) ---
-        missing_in_hydra = [idx for idx in sap_qty.keys() if idx not in seq_set]
+        if not lines:
+            messagebox.showwarning(
+                "Brak pozycji w raporcie",
+                "Nie znaleziono żadnych pozycji dla wybranej linii i startowego zlecenia.\n\n"
+                "Możliwe przyczyny:\n"
+                "• zlecenie jest na innej maszynie/linii\n"
+                "• brak danych w SAP/DB dla tej linii (dziś)\n"
+                "• problem z połączeniem z bazą\n"
+            )
+            _set_print_visible(False)
+
+            text.configure(state="normal")
+            text.delete("1.0", "end")
+            text.configure(state="disabled")
+            _upadate_placeholder_visibility()
+            return
 
         header = "RAPORT PODSTAW POD OKLEJANIE (SAP ułożony wg Hydry)\n"
         meta = []
