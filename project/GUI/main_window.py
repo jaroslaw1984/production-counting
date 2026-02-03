@@ -491,8 +491,10 @@ def run_app():
         end_by_machine = app_state.get("end_by_machine", {}) or {}
         shift_line = end_by_machine.get(linia_value, "")
         app_state["last_report_data"] = {
-            "shift_info": shift_line if shift_line else f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
-            "report_date": str(date.today()),
+            "shift_info": shift_line.replace("Produkcja będzie trwać do:", "").strip()
+                if shift_line
+                else f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
+                    "report_date": str(date.today()),
             "user": sap_user or "",
             "line": linia_value,
             "machine": "Maszyna 2",
