@@ -11,6 +11,8 @@ from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Dict, Any
 from pathlib import Path
+from docx import Document
+from docx.shared import Cm
 from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df, fetch_sap_basic_profiles
 from project.config.workplace_config_provider import merge_db_and_csv_config
 from project.config.count_per_loader import update_count_by_shift
@@ -48,6 +50,7 @@ def run_app():
         "machine_cfg": None,
         "table_frame": None,
         "last_report_text": "",
+        "last_report_data": None,
         } # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
 
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
@@ -99,15 +102,43 @@ def run_app():
  # 5) Element, który ma się rozciągać (np. Text lub Treeview)
     text = customtkinter.CTkTextbox(right)
     text.grid(row=1, column=0, sticky="nsew")
+    
+    # --- przyciski raportu (tworzone raz) ---
+    edit_btn = customtkinter.CTkButton(
+        right,
+        text="Edytuj raport",
+        command=lambda: edit_current_report(),
+        width=140
+    )
+    edit_btn.place_forget()
+
+    print_btn = customtkinter.CTkButton(
+        right,
+        text="Drukuj raport",
+        command=lambda: print_current_report(),
+        width=140
+    )
+    print_btn.place_forget()
+    
     text.configure(state="disabled")  # na start zablokowany do edycji
 
     
     def _set_print_visible(visible: bool) -> None:
-        """Pokazuje/ukrywa przycisk druku (używamy place, bo przycisk jest 'pływający')."""
+        """Pokazuje/ukrywa przyciski raportu (Drukuj/Edytuj)."""
         if visible:
+            # Drukuj w prawym dolnym rogu
             print_btn.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-20)
+            # Edytuj tuż nad nim
+            try:
+                edit_btn.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-60)
+            except Exception:
+                pass
         else:
             print_btn.place_forget()
+            try:
+                edit_btn.place_forget()
+            except Exception:
+                pass
 
     def _norm(text: str) -> str:
         return " ".join(str(text).replace("\xa0", " ").strip().lower().split())
@@ -192,13 +223,84 @@ def run_app():
             prev = gp
         return out
 
-    def ask_start_order_popup(parent) -> str | None:
-        dialog = ctk.CTkInputDialog(text="Podaj startowe ZLECENIE nowej grupy:", title="Start zlecenia")
-        val = dialog.get_input()
-        if val is None:
+    # def ask_start_order_popup(parent) -> str | None:
+    #     dialog = ctk.CTkInputDialog(text="Podaj startowe ZLECENIE nowej grupy:", title="Start zlecenia")
+    #     val = dialog.get_input()
+    #     if val is None:
+    #         return None
+    #     val = str(val).strip()
+    #     return val if val else None
+   
+    def ask_report_params_popup(parent) -> dict | None:
+        """
+        Jeden popup: wybór LINIA z listy + startowe zlecenie.
+        Zwraca: {"linia": "...", "start_order_id": "..."} albo None gdy anulowano.
+        """
+        popup = ctk.CTkToplevel(parent)
+        popup.title("Parametry raportu")
+        popup.resizable(False, False)
+        popup.grab_set()
+        center_popup(parent, popup)
+
+        result: dict | None = None
+
+        # --- pobierz listę maszyn (LINIA) z DB ---
+        try:
+            machines = fetch_available_machines()
+        except Exception as e:
+            messagebox.showerror("Błąd DB", f"Nie mogę pobrać listy maszyn z DB:\n{e}")
+            popup.destroy()
             return None
-        val = str(val).strip()
-        return val if val else None
+
+        machines = sorted({m.strip() for m in machines if str(m).strip()})
+
+        ctk.CTkLabel(popup, text="Wybierz linię (LINIA):").pack(anchor="w", padx=12, pady=(12, 4))
+        linia_var = tk.StringVar(value=machines[0] if machines else "")
+        linia_cb = ctk.CTkComboBox(popup, values=machines, variable=linia_var, width=260)
+        linia_cb.pack(anchor="w", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(popup, text="Startowe zlecenie nowej grupy:").pack(anchor="w", padx=12, pady=(0, 4))
+        start_var = tk.StringVar(value="")
+        start_entry = ctk.CTkEntry(popup, textvariable=start_var, width=260)
+        start_entry.pack(anchor="w", padx=12, pady=(0, 12))
+        start_entry.focus_set()
+
+        def on_ok():
+            nonlocal result
+            linia = (linia_var.get() or "").strip().upper()
+            start_order_id = (start_var.get() or "").strip()
+
+            if not linia:
+                messagebox.showwarning("Brak linii", "Wybierz linię.")
+                return
+            if not start_order_id:
+                messagebox.showwarning("Brak zlecenia", "Podaj startowe zlecenie.")
+                return
+
+            result = {"linia": linia, "start_order_id": start_order_id}
+            popup.destroy()
+
+        def on_cancel():
+            popup.destroy()
+
+        btns = ctk.CTkFrame(popup, fg_color="transparent")
+        btns.pack(fill="x", padx=12, pady=(0, 12))
+
+        ctk.CTkButton(btns, text="Anuluj", command=on_cancel).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btns, text="OK", command=on_ok).pack(side="right")
+
+        popup.wait_window()
+        return result
+   
+    
+    # def ask_line_popup(parent) -> str | None:
+    #     dialog = ctk.CTkInputDialog(text="Podaj linię (np. WLO-U005):", title="Linia SAP")
+    #     val = dialog.get_input()
+    #     if val is None:
+    #         return None
+    #     val = str(val).strip().upper()
+    #     return val if val else None
+    
 
     def generate_logistics_report():
         # 1) wybór pliku Hydry
@@ -216,9 +318,12 @@ def run_app():
             return
 
         # 2) start zlecenia
-        start_order_id = ask_start_order_popup(root)  # root: Twoje okno główne
-        if not start_order_id:
+        params = ask_report_params_popup(root)
+        if not params:
             return
+
+        linia_value = params["linia"]
+        start_order_id = params["start_order_id"]
 
         try:
             df_group = cut_from_order(df_hydra, start_order_id)
@@ -246,7 +351,10 @@ def run_app():
         sap_user = None
         sap_date = None
         
-        linia_value = "WLO-U006"
+        # linia_value = ask_line_popup(root)
+        # if not linia_value:
+        #     return
+        
         day_value = date.today()
         
         try:
@@ -294,37 +402,40 @@ def run_app():
 
         # --- budowa raportu w kolejności Hydry ---
         seq_set = set(seq)
-        lines = []
         
         # --- WERSJA DOCZELOWA: nie pokazuj powtórek jeśli ilość ta sama ---
         lines = []
         extras_not_in_sap = []
-
+        missing_seen = set() # by nie duplikować wpisów
+        
         shown_qty: dict[str, float] = {}   # INDEKS -> ostatnia pokazana ilość
+        rows = []
         lp = 1
 
         for gp in seq:
             if gp not in sap_qty:
-                extras_not_in_sap.append(gp)
-                continue  # nie do przygotowania
+                ...
+                continue
 
             qty = float(sap_qty.get(gp, 0.0))
             szt = int(sap_szt.get(gp, 0))
             jm = sap_jm.get(gp, "M")
 
-            # jeśli już pokazywaliśmy ten indeks i ilość jest identyczna -> pomiń
             if gp in shown_qty and abs(shown_qty[gp] - qty) < 1e-9:
                 continue
 
-            # jeśli był już pokazany, ale ilość się zmieniła -> pokaż jako zmiana
-            status = "OK" if gp not in shown_qty else "ZMIANA ILOŚCI"
             shown_qty[gp] = qty
-
             lines.append(f"{lp:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}  {szt:>6}")
 
+            rows.append({
+                "lp": lp,
+                "index": gp,
+                "qty_m": f"{qty:.1f} {jm}",
+                "pcs": f"{szt}",
+                "pallets": "",
+            })
+
             lp += 1
-
-
 
         # --- pozycje w SAP, których nie ma w Hydrze (kolejność nieznana) ---
         missing_in_hydra = [idx for idx in sap_qty.keys() if idx not in seq_set]
@@ -357,36 +468,164 @@ def run_app():
         _upadate_placeholder_visibility()
 
         app_state["last_report_text"] = report_text
+
+        # Dane strukturalne pod DOCX (layout jak w Wordzie)
+        app_state["last_report_data"] = {
+            "shift_info": f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
+            "report_date": str(date.today()),
+            "user": sap_user or "",
+            "line": linia_value,
+            "machine": "Maszyna 2",
+            "rows": rows
+        }
+
         _set_print_visible(True)   # jeśli masz przycisk druku ukrywany/pokazywany
         
 
             
 
+    
+    def export_report_docx(report_data: dict, template_path: Path | None = None) -> Path:
+        """Generuje DOCX na bazie template. Zwraca ścieżkę do wygenerowanego pliku."""
+        if not report_data:
+            raise ValueError("Brak danych raportu (report_data).")
+
+        if template_path is None:
+            template_path = BASE_DIR / "templates" / "report_template.docx"
+
+        if not template_path.exists():
+            raise FileNotFoundError(f"Brak szablonu DOCX: {template_path}")
+        
+        print("TEMPLATE:", template_path)
+        print("EXISTS:", template_path.exists())
+        print("MTIME:", datetime.fromtimestamp(template_path.stat().st_mtime))
+        
+
+        doc = Document(str(template_path))
+
+        def replace_all(old: str, new: str) -> None:
+            # paragrafy
+            for p in doc.paragraphs:
+                if old in p.text:
+                    for r in p.runs:
+                        r.text = r.text.replace(old, new)
+            # tabele
+            for t in doc.tables:
+                for row in t.rows:
+                    for cell in row.cells:
+                        if old in cell.text:
+                            cell.text = cell.text.replace(old, new)
+
+        # 1) Podmień pola nagłówka
+        replace_all("{{SHIFT_INFO}}", str(report_data.get("shift_info", "")))
+        replace_all("{{REPORT_DATE}}", str(report_data.get("report_date", "")))
+        replace_all("{{USER}}", str(report_data.get("user", "")))
+        replace_all("{{LINE}}", str(report_data.get("line", "")))
+        replace_all("{{MACHINE}}", str(report_data.get("machine", "")))
+        replace_all("{{PALLETS_TOTAL}}", str(report_data.get("pallets_total", "")))
+
+        # 2) Wypełnij tabelę: znajdź wiersz-placeholder i zastąp go danymi
+        rows = report_data.get("rows", []) or []
+        if not rows:
+            # nic do tabeli, zostaw placeholdery jako puste
+            replace_all("{{ROW_LP}}", "")
+            replace_all("{{ROW_INDEX}}", "")
+            replace_all("{{ROW_QTY_M}}", "")
+            replace_all("{{ROW_PCS}}", "")
+            replace_all("{{ROW_PALLETS}}", "")
+        else:
+            # szukamy pierwszej tabeli z placeholderem
+            target_table = None
+            placeholder_row_idx = None
+            for t in doc.tables:
+                for i, r in enumerate(t.rows):
+                    if any("{{ROW_LP}}" in c.text for c in r.cells):
+                        target_table = t
+                        placeholder_row_idx = i
+                        break
+                if target_table is not None:
+                    break
+
+            if target_table is None or placeholder_row_idx is None:
+                raise ValueError("Nie znalazłem w szablonie wiersza placeholderów ({{ROW_LP}}...).")
+
+            # usuń wiersz placeholder
+            tbl = target_table._tbl
+            tr = target_table.rows[placeholder_row_idx]._tr
+            tbl.remove(tr)
+
+            # dodaj wiersze danych
+            for item in rows:
+                r = target_table.add_row().cells
+                r[0].text = str(item.get("lp", ""))
+                r[1].text = str(item.get("index", ""))
+                r[2].text = str(item.get("qty_m", ""))
+                r[3].text = str(item.get("pcs", ""))
+                r[4].text = str(item.get("pallets", ""))
+
+        # 3) Zapis
+        out_dir = Path(tempfile.gettempdir()) / "production_counter_reports"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        safe_line = str(report_data.get("line", "LINIA")).replace("/", "-")
+        out_path = out_dir / f"Zapotrzebowanie_{safe_line}_{stamp}.docx"
+        doc.save(str(out_path))
+        return out_path
+
+
+    def open_docx(path: Path) -> None:
+        try:
+            os.startfile(str(path))  # Windows
+        except Exception as e:
+            messagebox.showerror("Błąd", f"Nie udało się otworzyć pliku:\n{e}")
+
+
+
+    def print_docx(path: Path) -> None:
+        try:
+            os.startfile(str(path), "print")  # Windows
+        except Exception as e:
+            messagebox.showerror("Błąd druku", f"Nie udało się uruchomić druku:{e}")
+
+
+
     def print_current_report() -> None:
-        full_text = app_state.get("last_report_text", "")
-        report_text = make_print_summary(full_text)
-        if not report_text or not report_text.strip():
-            messagebox.showwarning("Brak raportu", "Nie ma nic do wydrukowania.")
-            _set_print_visible(False)
+            report_data = app_state.get("last_report_data")
+            if not report_data:
+                # fallback: drukuj dokładnie to, co widać (tekst)
+                report_text = app_state.get("last_report_text", "")
+                if not report_text.strip():
+                    messagebox.showwarning("Brak raportu", "Nie ma nic do wydrukowania.")
+                    _set_print_visible(False)
+                    return
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as f:
+                        f.write(report_text)
+                        path = f.name
+                    os.startfile(path, "print")  # Windows
+                except Exception as e:
+                    messagebox.showerror("Błąd druku", f"Nie udało się uruchomić druku:\n{e}")
+                return
+
+            try:
+                docx_path = export_report_docx(report_data)
+                print_docx(docx_path)
+            except Exception as e:
+                messagebox.showerror("Błąd druku", f"Nie udało się przygotować/drukować DOCX:\n{e}")
+    
+    def edit_current_report() -> None:
+        report_data = app_state.get("last_report_data")
+        if not report_data:
+            messagebox.showwarning("Brak raportu", "Najpierw wygeneruj raport.")
             return
 
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as f:
-                f.write(report_text)
-                path = f.name
-
-            os.startfile(path, "print")  # Windows
+            docx_path = export_report_docx(report_data)
+            open_docx(docx_path)
         except Exception as e:
-            messagebox.showerror("Błąd druku", f"Nie udało się uruchomić druku:\n{e}")
+            messagebox.showerror("Błąd edycji", f"Nie udało się przygotować/otworzyć DOCX:\n{e}")
+      
 
-        # przycisk drukowania (startowo ukryty) - pływający prawy dół
-    print_btn = customtkinter.CTkButton(
-        right,
-        text="Drukuj raport",
-        command=print_current_report,
-        width=140
-    )
-    print_btn.place_forget()  # ukryty na start
 
     # placeholder (nakładana etykieta wewnątrz Textboxa)
     placeholder_text = "Program do obliczania produkcji \n\n1. Kliknij „Wczytaj maszyny”, aby pobrać aktualne zlecenia z bazy danych.\n\n 2. Wybierz maszyny do przeliczenia i ustaw sztuki na zmianę. \n\n 3. Kliknij „Przelicz produkcję”, aby sprawdzić, \n\n do której zmiany i dnia potrwa produkcja. \n\n Opcjonalnie: \n\n – „Wczytaj plik” umożliwia przeliczenie produkcji z pliku Excel (.xlsx, .xls), \n\n jeśli baza danych jest niedostępna."
@@ -819,12 +1058,7 @@ def run_app():
             machines = fetch_available_machines()
             if source == "db+csv":
                 # lepiej status w pasku, ale możesz też messagebox (tylko raz)
-                result_var.set(f"Konfiguracja: DB + CSV (brak w DB: {len(missing)})")
-            elif source == "db":
-                result_var.set("Konfiguracja: DB")
-            else:
-                result_var.set("Konfiguracja: CSV (fallback)")
-                        
+                messagebox.showerror(f"Konfiguracja: DB + CSV (brak w DB: {len(missing)})")                     
         except Exception as e:
             messagebox.showerror("Brak sterownika ODBC / brak dostępu do sieci firmowej \n\n Możesz użyć trybu: Wczytaj plik (Excel", str(e))
             return
