@@ -16,6 +16,8 @@ from docx.shared import Cm
 from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df, fetch_sap_basic_profiles
 from project.config.workplace_config_provider import merge_db_and_csv_config
 from project.config.count_per_loader import update_count_by_shift
+from project.GUI.ui_texts import HELP_PLACEHOLDER
+
 
 
 
@@ -648,7 +650,7 @@ def run_app():
       
 
     # placeholder (nakładana etykieta wewnątrz Textboxa)
-    placeholder_text = "Program do obliczania produkcji \n\n1. Kliknij „Wczytaj maszyny”, aby pobrać aktualne zlecenia z bazy danych.\n\n 2. Wybierz maszyny do przeliczenia i ustaw sztuki na zmianę. \n\n 3. Kliknij „Przelicz produkcję”, aby sprawdzić, \n\n do której zmiany i dnia potrwa produkcja. \n\n Opcjonalnie: \n\n – „Wczytaj plik” umożliwia przeliczenie produkcji z pliku Excel (.xlsx, .xls), \n\n jeśli baza danych jest niedostępna."
+    placeholder_text = HELP_PLACEHOLDER
     placeholder_lbl = customtkinter.CTkLabel(text, text=placeholder_text, justify="center", text_color="#888888", font=default_font)
     # umieść placeholder wewnątrz textboxa, wyśrodkowany
     placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
