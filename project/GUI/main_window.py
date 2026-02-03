@@ -446,16 +446,8 @@ def run_app():
 
         report_text = header + meta_txt
         report_text += "LP  INDEKS               ILOŚĆ       M   SZT\n"
-        report_text += "-" * 48 + "\n"
+        report_text += "-" * 70 + "\n"
         report_text += "\n".join(lines)
-
-        if extras_not_in_sap:
-            report_text += "\n\nW Hydrze, ale BRAK w SAP:\n"
-            report_text += "\n".join(f"- {x}" for x in extras_not_in_sap)
-
-        if missing_in_hydra:
-            report_text += "\n\nW SAP, ale BRAK w Hydrze (kolejność nieznana):\n"
-            report_text += "\n".join(f"- {x}  {sap_qty[x]:.1f} {sap_jm.get(x,'M')}" for x in missing_in_hydra)
             
         text.configure(state="normal")
         text.delete("1.0", "end")
