@@ -315,6 +315,12 @@ def run_app():
     #     val = str(val).strip().upper()
     #     return val if val else None
     
+    def machine_label_from_line(line: str) -> str:
+        m = re.search(r"(\d+)\s*$", str(line).strip())  # bierze cyfry na końcu
+        if not m:
+            return ""
+        return f"Maszyna {int(m.group(1))}"
+    
 
     def generate_logistics_report():
         # 1) wybór pliku Hydry
@@ -497,7 +503,7 @@ def run_app():
                     "report_date": str(date.today()),
             "user": sap_user or "",
             "line": linia_value,
-            "machine": "Maszyna 2",
+            "machine": machine_label_from_line(linia_value),
             "rows": rows
         }
 
