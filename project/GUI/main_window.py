@@ -54,6 +54,7 @@ def run_app():
         "last_report_text": "",
         "last_report_data": None,
         "last_report_kind": None,
+        "production_calculated": False
         } # Słownik do przechowywania stanu aplikacji (np. wczytany DataFrame)
 
     customtkinter.set_appearance_mode("Dark")  # Tryby: "System" (domyślny), "Dark", "Light"
@@ -305,24 +306,27 @@ def run_app():
 
         popup.wait_window()
         return result
-   
-    
-    # def ask_line_popup(parent) -> str | None:
-    #     dialog = ctk.CTkInputDialog(text="Podaj linię (np. WLO-U005):", title="Linia SAP")
-    #     val = dialog.get_input()
-    #     if val is None:
-    #         return None
-    #     val = str(val).strip().upper()
-    #     return val if val else None
-    
+
+    # helper: generuje numer maszyny z nazwy linii
     def machine_label_from_line(line: str) -> str:
         m = re.search(r"(\d+)\s*$", str(line).strip())  # bierze cyfry na końcu
         if not m:
             return ""
         return f"Maszyna {int(m.group(1))}"
     
-
+    # główna funkcja generująca raport logistyczny
     def generate_logistics_report():
+        # --- warunek: jeśli nie przeliczono produkcji, to nie można robić raportu (bo nie będzie dat zakończenia) ---
+        if not app_state.get("production_calculated"):
+            messagebox.showwarning(
+                "Nie można wygenerować raportu",
+                "Raport zapotrzebowania wymaga wcześniejszego przeliczenia produkcji.\n\n"
+                "Wykonaj kolejno:\n"
+                "1) Wczytaj maszyny\n"
+                "2) Przelicz produkcję"
+            )
+            return
+        
         # 1) wybór pliku Hydry
         file_path = filedialog.askopenfilename(
             title="Wczytaj eksport Hydry (.xlsx)",
@@ -344,6 +348,17 @@ def run_app():
 
         linia_value = params["linia"]
         start_order_id = params["start_order_id"]
+        
+        end_by_machine = app_state.get("end_by_machine") or {}
+        shift_line = end_by_machine.get(linia_value)
+
+        if not shift_line:
+            messagebox.showwarning(
+                f"Brak daty zakończenia dla maszyny {linia_value}",
+                "Najpierw wykonaj: Wczytaj maszyny → Przelicz produkcję.\n"
+                "Raport zapotrzebowania wymaga daty zakończenia grupy."
+            )
+            return
 
         try:
             df_group = cut_from_order(df_hydra, start_order_id)
@@ -1094,6 +1109,8 @@ def run_app():
                 end_by_machine[current_machine] = line.strip()
 
         app_state["end_by_machine"] = end_by_machine
+        app_state["production_calculated"] = True
+
 
 
     # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
