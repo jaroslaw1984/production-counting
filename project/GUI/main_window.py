@@ -512,7 +512,7 @@ def run_app():
         end_by_machine = app_state.get("end_by_machine", {}) or {}
         shift_line = end_by_machine.get(linia_value, "")
         app_state["last_report_data"] = {
-            "shift_info": shift_line.replace("Produkcja będzie trwać do:", "").strip()
+            "shift_info": shift_line.replace("Przewidywana produkcja do:", "").strip()
                 if shift_line
                 else f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
                     "report_date": str(date.today()),
@@ -694,7 +694,7 @@ def run_app():
         """
         Z pełnego raportu wycina tylko:
         === WLO-... ===
-        Produkcja będzie trwać do: ...
+        Przewidywana produkcja do: ...
         """
         if not report_text or not report_text.strip():
             return ""
@@ -713,24 +713,24 @@ def run_app():
                 # jeśli kończymy poprzednią maszynę
                 if current_machine:
                     out.append(f"=== {current_machine} ===")
-                    out.append(current_end or "Produkcja będzie trwać do: brak danych")
+                    out.append(current_end or "Przewidywana produkcja do: brak danych")
                     out.append("")  # pusta linia między maszynami
                 current_machine = m.group(1)
                 current_end = None
                 continue
 
             # linia końca produkcji
-            if line.startswith("Produkcja będzie trwać do:"):
+            if line.startswith("Przewidywana produkcja do:"):
                 current_end = line
 
             # jeśli maszyna nie ma danych
             if line == "Brak danych." and current_machine:
-                current_end = "Produkcja będzie trwać do: brak danych"
+                current_end = "Przewidywana produkcja do: brak danych"
 
         # domknij ostatnią maszynę
         if current_machine:
             out.append(f"=== {current_machine} ===")
-            out.append(current_end or "Produkcja będzie trwać do: brak danych")
+            out.append(current_end or "Przewidywana produkcja do: brak danych")
             out.append("")
 
         title = "---- Przewidywane zakończenie produkcji --- \n\n"
@@ -1030,7 +1030,7 @@ def run_app():
             lines.append(f"Zmiany (8h): {shifts_exact:.2f} → {shifts_rounded}")
             lines.append(f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}")
             lines.append("---------------------------------------------------------------------")
-            lines.append(f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n")
+            lines.append(f"Przewidywana produkcja do: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n")
 
         return "\n".join(lines)
        
@@ -1108,7 +1108,7 @@ def run_app():
                 current_machine = m.group(1).strip()
                 continue
 
-            if current_machine and line.strip().startswith("Produkcja będzie trwać do:"):
+            if current_machine and line.strip().startswith("Przewidywana produkcja do:"):
                 end_by_machine[current_machine] = line.strip()
 
         app_state["end_by_machine"] = end_by_machine
@@ -1820,7 +1820,7 @@ def run_app():
             include_weekends=include_weekends
 )
         
-        end_line = f"Produkcja będzie trwać do: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n"
+        end_line = f"Przewidywana produkcja do: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n"
 
         result_text = (
             f"Stanowisko:   {workplace}\n"
