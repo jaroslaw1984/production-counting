@@ -62,7 +62,7 @@ def run_app():
     
     root = customtkinter.CTk()
     root.title("Policz produkcję")
-    root.geometry("800x500")
+    root.geometry("800x600")
 
     def center_popup(parent, popup):
         try:
@@ -85,7 +85,7 @@ def run_app():
     root.grid_columnconfigure(1, weight=1)
     root.grid_rowconfigure(0, weight=1)
 
-    default_font = customtkinter.CTkFont(family="Segoe UI", size=14, weight="bold")
+    default_font = customtkinter.CTkFont(family="Segoe UI", size=16, weight="bold")
 
 # 2) Lewy panel (np. przyciski/filtry)
     left = customtkinter.CTkFrame(root)
