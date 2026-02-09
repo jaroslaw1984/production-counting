@@ -7,6 +7,7 @@ import warnings
 import os
 import tempfile
 import re
+import json
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Dict, Any
@@ -351,6 +352,14 @@ def run_app():
         
         end_by_machine = app_state.get("end_by_machine") or {}
         shift_line = end_by_machine.get(linia_value)
+        
+        snap = load_snapshot_if_today()
+        if snap and isinstance(snap.get("end_by_machine"), dict):
+            end_by_machine = snap["end_by_machine"]
+        else:
+            end_by_machine = app_state.get("end_by_machine") or {}
+
+        shift_line = end_by_machine.get(linia_value)        
 
         if not shift_line:
             messagebox.showwarning(
@@ -508,19 +517,32 @@ def run_app():
         app_state["last_report_text"] = report_text
         app_state["last_report_kind"] = "sap"
 
+        # # Dane strukturalne pod DOCX (layout jak w Wordzie)
+        # end_by_machine = app_state.get("end_by_machine", {}) or {}
+        # shift_line = end_by_machine.get(linia_value, "")
+        # app_state["last_report_data"] = {
+        #     "shift_info": shift_line.replace("Przewidywana produkcja do:", "").strip()
+        #         if shift_line
+        #         else f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
+        #             "report_date": str(date.today()),
+        #     "user": sap_user or "",
+        #     "line": linia_value,
+        #     "machine": machine_label_from_line(linia_value),
+        #     "rows": rows
+        # }
+
         # Dane strukturalne pod DOCX (layout jak w Wordzie)
-        end_by_machine = app_state.get("end_by_machine", {}) or {}
-        shift_line = end_by_machine.get(linia_value, "")
         app_state["last_report_data"] = {
             "shift_info": shift_line.replace("Przewidywana produkcja do:", "").strip()
                 if shift_line
                 else f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
-                    "report_date": str(date.today()),
+            "report_date": str(date.today()),
             "user": sap_user or "",
             "line": linia_value,
             "machine": machine_label_from_line(linia_value),
             "rows": rows
         }
+
 
         _set_print_visible(True)   # jeśli masz przycisk druku ukrywany/pokazywany
         
@@ -932,16 +954,30 @@ def run_app():
                     app_state["machine_cfg_source"] = source
                     
             popup.destroy()
-            on_confirm(selected, pps_by_machine)
+            on_confirm(selected, pps_by_machine, save_snapshot_var.get())
 
         btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
         btn_frame.pack(fill="x", padx=12, pady=12)
 
-        toggle_btn = ctk.CTkButton(btn_frame, text="Wybierz wszystkie", command=toggle_select_all)
+        left_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        left_frame.pack(side="left")
+
+        mid_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        mid_frame.pack(side="left", padx=(14, 0))
+
+        right_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        right_frame.pack(side="right")
+
+        toggle_btn = ctk.CTkButton(left_frame, text="Wybierz wszystkie", command=toggle_select_all)
         toggle_btn.pack(side="left")
 
-        ctk.CTkButton(btn_frame, text="Anuluj", command=popup.destroy).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(btn_frame, text="Przelicz produkcję", command=confirm).pack(side="right")
+        save_snapshot_var = tk.BooleanVar(value=False)
+        save_cb = ctk.CTkCheckBox(mid_frame, text="Zapisz terminy", variable=save_snapshot_var)
+        save_cb.pack(side="left")
+
+        ctk.CTkButton(right_frame, text="Anuluj", command=popup.destroy).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(right_frame, text="Przelicz produkcję", command=confirm).pack(side="right")
+
 
         _refresh_toggle_btn_text()
 
@@ -1035,7 +1071,7 @@ def run_app():
         return "\n".join(lines)
        
     # funkcja przeliczająca produkcję z DB i pokazująca wyniki w textboxie    
-    def calculate_from_db(selected_machines, pps_by_machine):
+    def calculate_from_db(selected_machines, pps_by_machine, save_snapshot_flag: bool = False):
         # 1) parametry czasu (ten sam popup co w Excelu)
         # bierzemy default szt./zmianę z pierwszej zaznaczonej maszyny
         default_pps = int(pps_by_machine.get(selected_machines[0], 0)) if selected_machines else 0
@@ -1113,8 +1149,14 @@ def run_app():
 
         app_state["end_by_machine"] = end_by_machine
         app_state["production_calculated"] = True
-
-
+        
+        if save_snapshot_flag:
+            meta = {
+                "selected_machines": selected_machines,
+                "pps_by_machine": pps_by_machine,
+            }
+            save_snapshot(end_by_machine=end_by_machine)
+        
 
     # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
     def loading_machine_data(parent):
@@ -1133,6 +1175,59 @@ def run_app():
             return
 
         show_machine_select_popup(machines, calculate_from_db)
+        
+    def _get_app_data_dir() -> Path:
+        # Windows: %APPDATA%\ProductionCounter
+        base = Path(os.getenv("APPDATA") or Path.home())
+      
+        d = base / "ProductionCounter"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _snapshot_path() -> Path:
+        return _get_app_data_dir() / "production_snapshot.json"
+
+    def save_snapshot(end_by_machine: dict[str, str]) -> None:
+        path = _snapshot_path()
+        today = date.today().isoformat()
+
+        # jeśli już jest snapshot na dziś — zapytaj, czy nadpisać
+        if path.exists():
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                if existing.get("snapshot_date") == today:
+                    ok = messagebox.askyesno(
+                        "Snapshot już istnieje",
+                        "Snapshot na dzisiaj już istnieje.\nCzy chcesz go nadpisać?"
+                    )
+                    if not ok:
+                        return
+            except Exception:
+                # jak plik uszkodzony, nadpisz bez gadania
+                pass
+
+        payload = {
+            "snapshot_date": today,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "end_by_machine": end_by_machine,
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def load_snapshot_if_today() -> Optional[dict[str, Any]]:
+        path = _snapshot_path()
+        if not path.exists():
+            return None
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+        if data.get("snapshot_date") != date.today().isoformat():
+            return None
+
+        return data
+        
   
     # funkcja przełączania motywu
     def change():
