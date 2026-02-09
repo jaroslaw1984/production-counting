@@ -966,10 +966,10 @@ def run_app():
                 continue
 
             # soll i gut w sztukach
-            soll = pd.to_numeric(df_one["target_value_pcs"], errors="coerce").fillna(0)
-            gut = pd.to_numeric(df_one["good_qty_pcs"], errors="coerce").fillna(0)
+            target_value = pd.to_numeric(df_one["target_value_pcs"], errors="coerce").fillna(0)
+            good_qty = pd.to_numeric(df_one["good_qty_pcs"], errors="coerce").fillna(0)
 
-            remaining = (soll - gut).clip(lower=0)
+            remaining = (target_value - good_qty).clip(lower=0)
             total_remaining = float(remaining.sum())
 
             pps = int(pps_by_machine.get(machine, 0))
@@ -1012,12 +1012,15 @@ def run_app():
             prod_shifts = total_remaining / pps if total_remaining > 0 else 0.0
             shifts_exact = prod_shifts + setup_shifts
             shifts_rounded = round_shifts_custom(shifts_exact)
+            
+            # dodajemy 1 zmianę buforową na ewentualne nieprzewidziane opóźnienia (nie liczymy jej w produkcji, tylko jako margines bezpieczeństwa)
+            buffer_shifts = 1
 
             # koniec produkcji dla tej maszyny
             end_d, end_s = add_shifts(
                 start_date=start_d,
                 start_shift=start_shift,
-                shifts_count=shifts_rounded,
+                shifts_count=shifts_rounded + buffer_shifts,
                 include_weekends=include_weekends,
             )
 
@@ -1205,7 +1208,7 @@ def run_app():
     def round_shifts_custom(shifts: float) -> int:
         """4.5 -> 4 (w dół), 4.7 -> 5 (w górę)."""
         frac = shifts - math.floor(shifts)
-        return math.floor(shifts) if frac < 0.5 else math.ceil(shifts)
+        return math.floor(shifts) if frac < 0.6 else math.ceil(shifts)
 
     def next_workday(d: date) -> date:
         d += timedelta(days=1)
