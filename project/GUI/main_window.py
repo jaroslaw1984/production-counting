@@ -930,7 +930,7 @@ def run_app():
                     "Zapis do konfiguracji",
                     "Wykryto zmiany szt./zmianę:\n\n"
                     f"{preview}\n\n"
-                    "Zapisać do machine_config.csv?"
+                    "Zapisać zmiany?"
                 ):
                     for m, _, new_val in changes:
                         mask = df_mc_df["workplace"].astype("string").str.strip() == str(m).strip()
@@ -1775,7 +1775,7 @@ def run_app():
                     f"Zmieniono prędkość dla {workplace}\n"
                     f"Było: {default_speed}\n"
                     f"Jest: {new_speed}\n\n"
-                    "Zapisać do machine_config.csv?"
+                    "Zapisać zmiany?"
                 ):
                     df_mc.loc[mask, "speed_m_per_min"] = new_speed
                     save_machine_config(df_mc, MACHINE_CONFIG_PATH)
@@ -1791,7 +1791,7 @@ def run_app():
                     f"Zmieniono szt./zmianę dla {workplace}\n"
                     f"Było: {default_pieces_per_shift}\n"
                     f"Jest: {new_pps}\n\n"
-                    "Zapisać do machine_config.csv?"
+                    "Zapisać zmiany?"
                 ):
                     df_mc.loc[mask, "count_by_shift"] = new_pps
                     save_machine_config(df_mc, MACHINE_CONFIG_PATH)
