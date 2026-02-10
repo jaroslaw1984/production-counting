@@ -409,12 +409,13 @@ def run_app():
 
         if df_sap is None or df_sap.empty:
             messagebox.showwarning("Brak danych SAP", f"Brak danych dla: {linia_value} / {day_value}")
-            return           
+            return      
+        
+        sap_rows_by_index: dict[str, list[dict]] = {}
 
         for _, r in df_sap.iterrows():
             idx = str(r["INDEKS"]).strip()
 
-            # --- ILOŚĆ (metry) ---
             qty = r["ILOSC"]
             if isinstance(qty, str):
                 qty = qty.replace(",", ".")
@@ -423,20 +424,19 @@ def run_app():
             except Exception:
                 qty = 0.0
 
-            # --- SZTUKI ---
             szt = r.get("IL_SZT", 0)
             try:
                 szt = int(szt)
             except Exception:
                 szt = 0
 
-            # --- JM ---
             jm = str(r.get("JM", "M")).strip()
 
-            # --- sumowanie ---
-            sap_qty[idx] = sap_qty.get(idx, 0.0) + qty
-            sap_szt[idx] = sap_szt.get(idx, 0) + szt
-            sap_jm[idx] = jm
+            sap_rows_by_index.setdefault(idx, []).append({
+                "qty": qty,
+                "szt": szt,
+                "jm": jm,
+            })
 
             if sap_user is None and "USER" in df_sap.columns:
                 sap_user = str(r["USER"]).strip()
@@ -447,25 +447,21 @@ def run_app():
         # --- budowa raportu w kolejności Hydry ---
         seq_set = set(seq)
         
-        # --- WERSJA DOCZELOWA: nie pokazuj powtórek jeśli ilość ta sama ---
         lines = []
-        shown_qty: dict[str, float] = {}   # INDEKS -> ostatnia pokazana ilość
         rows = []
-        lp = 1       
+        lp = 1
 
         for gp in seq:
-            if gp not in sap_qty:
-                ...
-                continue
+            items = sap_rows_by_index.get(gp, [])
+            if not items:
+                continue  # albo: dopisz brak w raporcie, jak chcesz
 
-            qty = float(sap_qty.get(gp, 0.0))
-            szt = int(sap_szt.get(gp, 0))
-            jm = sap_jm.get(gp, "M")
+            item = items.pop(0)  # bierzemy "kolejną" pozycję dla tego indeksu
 
-            if gp in shown_qty and abs(shown_qty[gp] - qty) < 1e-9:
-                continue
+            qty = float(item["qty"])
+            szt = int(item["szt"])
+            jm = str(item["jm"])
 
-            shown_qty[gp] = qty
             lines.append(f"{lp:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}  {szt:>6}")
 
             rows.append({
@@ -475,9 +471,9 @@ def run_app():
                 "pcs": f"{szt}",
                 "pallets": "",
             })
-
             lp += 1
 
+        # Informacja o braku pozycji w raporcie (nie znaleziono nic dla tej linii i startowego zlecenia)
         if not lines:
             messagebox.showwarning(
                 "Brak pozycji w raporcie",
@@ -517,19 +513,6 @@ def run_app():
         app_state["last_report_text"] = report_text
         app_state["last_report_kind"] = "sap"
 
-        # # Dane strukturalne pod DOCX (layout jak w Wordzie)
-        # end_by_machine = app_state.get("end_by_machine", {}) or {}
-        # shift_line = end_by_machine.get(linia_value, "")
-        # app_state["last_report_data"] = {
-        #     "shift_info": shift_line.replace("Przewidywana produkcja do:", "").strip()
-        #         if shift_line
-        #         else f"{pl_weekday_name(date.today())} (zmiana 1) ({date.today().strftime('%d.%m.%Y')})",
-        #             "report_date": str(date.today()),
-        #     "user": sap_user or "",
-        #     "line": linia_value,
-        #     "machine": machine_label_from_line(linia_value),
-        #     "rows": rows
-        # }
 
         # Dane strukturalne pod DOCX (layout jak w Wordzie)
         app_state["last_report_data"] = {
@@ -542,7 +525,6 @@ def run_app():
             "machine": machine_label_from_line(linia_value),
             "rows": rows
         }
-
 
         _set_print_visible(True)   # jeśli masz przycisk druku ukrywany/pokazywany
         
@@ -2203,7 +2185,6 @@ def run_app():
     about_btn.grid(row=99, column=0, pady=(0, 10), sticky="ew")
 
 
-
     # funkcja czyszczenia textboxa
     def clean_text():
         text.configure(state="normal")
@@ -2215,7 +2196,6 @@ def run_app():
         app_state["last_report_text"] = ""
         _set_print_visible(False)
         _upadate_placeholder_visibility()
-
 
 
 # 6) Przykładowe przyciski w lewym panelu
