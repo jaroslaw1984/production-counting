@@ -255,7 +255,7 @@ def run_app():
 
         machines = sorted({m.strip() for m in machines if str(m).strip()})
 
-        ctk.CTkLabel(popup, text="Wybierz linię (LINIA):").pack(anchor="w", padx=12, pady=(12, 4))
+        ctk.CTkLabel(popup, text="Wybierz maszynę (LINIA):").pack(anchor="w", padx=12, pady=(12, 4))
         linia_var = tk.StringVar(value=machines[0] if machines else "")
         linia_cb = ctk.CTkComboBox(popup, values=machines, variable=linia_var, width=260)
         linia_cb.pack(anchor="w", padx=12, pady=(0, 10))
