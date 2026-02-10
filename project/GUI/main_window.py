@@ -317,16 +317,23 @@ def run_app():
     
     # główna funkcja generująca raport logistyczny
     def generate_logistics_report():
-        # --- warunek: jeśli nie przeliczono produkcji, to nie można robić raportu (bo nie będzie dat zakończenia) ---
+        # --- warunek: raport wymaga danych o terminach zakończenia ---
         if not app_state.get("production_calculated"):
-            messagebox.showwarning(
-                "Nie można wygenerować raportu",
-                "Raport zapotrzebowania wymaga wcześniejszego przeliczenia produkcji.\n\n"
-                "Wykonaj kolejno:\n"
-                "1) Wczytaj maszyny\n"
-                "2) Przelicz produkcję"
-            )
-            return
+            snap = load_snapshot_if_today()
+            if snap and isinstance(snap.get("end_by_machine"), dict) and snap["end_by_machine"]:
+                # mamy świeże dane z JSON → traktujemy jak "policzone"
+                app_state["end_by_machine"] = snap["end_by_machine"]
+                app_state["production_calculated"] = True
+            else:
+                messagebox.showwarning(
+                    "Nie można wygenerować raportu",
+                    "Raport zapotrzebowania wymaga wcześniejszego przeliczenia produkcji.\n\n"
+                    "Wykonaj kolejno:\n"
+                    "1) Wczytaj maszyny\n"
+                    "2) Przelicz produkcję\n\n"
+                    "Lub (jeśli zapisywałeś terminy) upewnij się, że istnieje zapis z dzisiejszego dnia."
+                )
+                return
         
         # 1) wybór pliku Hydry
         file_path = filedialog.askopenfilename(
