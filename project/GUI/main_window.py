@@ -13,7 +13,8 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Dict, Any
 from pathlib import Path
 from docx import Document
-from docx.shared import Cm
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df, fetch_sap_basic_profiles
 from project.config.workplace_config_provider import merge_db_and_csv_config
 from project.config.count_per_loader import update_count_by_shift
@@ -549,6 +550,24 @@ def run_app():
             raise FileNotFoundError(f"Brak szablonu DOCX: {template_path}")
         
         doc = Document(str(template_path))
+        
+        def set_cell_margins(cell, top=200, bottom=200):
+            """
+            Marginesy w TWIPS:
+            200 ≈ ok. 0.35 cm
+            """
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+
+            tcMar = OxmlElement("w:tcMar")
+
+            for side, value in [("top", top), ("bottom", bottom)]:
+                node = OxmlElement(f"w:{side}")
+                node.set(qn("w:w"), str(value))
+                node.set(qn("w:type"), "dxa")
+                tcMar.append(node)
+
+            tcPr.append(tcMar)        
 
         def replace_all(old: str, new: str) -> None:
             # paragrafy
@@ -609,6 +628,9 @@ def run_app():
                 r[2].text = str(item.get("qty_m", ""))
                 r[3].text = str(item.get("pcs", ""))
                 r[4].text = str(item.get("pallets", ""))
+                
+                for cell in r:
+                    set_cell_margins(cell, top=200, bottom=200)
 
         # 3) Zapis
         out_dir = Path(tempfile.gettempdir()) / "production_counter_reports"
