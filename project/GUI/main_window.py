@@ -19,6 +19,7 @@ from project.config.db_loader import fetch_available_machines, fetch_orders_for_
 from project.config.workplace_config_provider import merge_db_and_csv_config
 from project.config.count_per_loader import update_count_by_shift
 from project.GUI.ui_texts import HELP_PLACEHOLDER
+from collections import Counter, defaultdict
 
 
 
@@ -185,15 +186,24 @@ def run_app():
 
         order_col = find_column(df, ORDER_ALIASES)
         gp_col = find_column(df, GRUNDPROFIL_ALIASES)
+        side_col = detect_side_column(df)
 
-        out = df[[order_col, gp_col]].copy()
-        out = out.rename(columns={order_col: "order_id", gp_col: "grundprofil"})
+        out = df[[order_col, gp_col, side_col]].copy()
+        out = out.rename(columns={order_col: "order_id", gp_col: "grundprofil", side_col: "side"})
         out["order_id"] = out["order_id"].astype("string").str.strip()
         out["grundprofil"] = out["grundprofil"].astype("string").str.strip()
         out = out[(out["order_id"] != "") & (out["grundprofil"] != "")]
+        out["side"] = (
+            out["side"]
+            .astype("string")
+            .str.strip()
+            .str.replace(r"\.0$", "", regex=True)
+            .str.zfill(4)
+            )
+        out = out[(out["order_id"] != "") & (out["grundprofil"] != "") & (out["side"] != "")]
+        
         return out.reset_index(drop=True)
-
-
+        
     def _normalize_order_id(s: str) -> str:
         s = str(s).strip()
         s = re.sub(r"\.0$", "", s)      # usuń końcówkę .0
@@ -219,19 +229,8 @@ def run_app():
 
         return df.loc[hits[0]:].reset_index(drop=True)
 
-
-    def build_sequence(df: pd.DataFrame) -> list[str]:
-        # usuwa tylko duplikaty obok siebie (bezpiecznik)
-        seq = df["grundprofil"].tolist()
-        out = []
-        prev = None
-        for gp in seq:
-            if gp == prev:
-                continue
-            out.append(gp)
-            prev = gp
-        return out
-   
+    
+    # raport zapotrzebowania: popup z parametrami + generowanie raportu
     def ask_report_params_popup(parent) -> dict | None:
         """
         Jeden popup: wybór LINIA z listy + startowe zlecenie.
@@ -315,6 +314,19 @@ def run_app():
         if not m:
             return ""
         return f"Maszyna {int(m.group(1))}"
+        
+    def build_blocks(df: pd.DataFrame) -> list[tuple[str, str]]:
+        gp_seq = df["grundprofil"].astype("string").str.strip().tolist()
+        side_seq = df["side"].astype("string").str.strip().str.zfill(4).tolist()
+
+        blocks: list[tuple[str, str]] = []
+        prev = None
+        for gp, side in zip(gp_seq, side_seq):
+            key = (gp, side)
+            if key != prev:
+                blocks.append(key)
+                prev = key
+        return blocks        
     
     # główna funkcja generująca raport logistyczny
     def generate_logistics_report():
@@ -383,13 +395,16 @@ def run_app():
             messagebox.showerror("Błąd startu grupy", str(e))
             return
 
-        seq = build_sequence(df_group)
+        blocks = build_blocks(df_group)
+        blocks_count = Counter(gp for gp, _side in blocks)
+        used_blocks = defaultdict(int)  # ile bloków danego indeksu już obsłużyliśmy    
+
  
         # 3) na MVP wypisz w oknie wynik
         report_text = "=== Kolejność podstaw (Hydra) ===\n\n" + "\n".join(
-            f"{i+1}. {gp}" for i, gp in enumerate(seq)
+            f"{i+1}. {gp} ({side})" for i, (gp, side) in enumerate(blocks)
         )
-
+        
         text.configure(state="normal")
         text.delete("1.0", "end")
         text.insert("end", report_text)
@@ -451,35 +466,50 @@ def run_app():
             if sap_date is None and "DATA" in df_sap.columns:
                 sap_date = str(r["DATA"]).strip()
 
-
-        # --- budowa raportu w kolejności Hydry ---
-        seq_set = set(seq)
         
         lines = []
         rows = []
         lp = 1
 
-        for gp in seq:
+        for gp, side in blocks:
             items = sap_rows_by_index.get(gp, [])
             if not items:
-                continue  # albo: dopisz brak w raporcie, jak chcesz
+                continue
 
-            item = items.pop(0)  # bierzemy "kolejną" pozycję dla tego indeksu
+            used_blocks[gp] += 1
+            remaining_blocks = blocks_count[gp] - used_blocks[gp] + 1  # ile bloków (włącznie z tym) jeszcze zostało
 
-            qty = float(item["qty"])
-            szt = int(item["szt"])
-            jm = str(item["jm"])
+            remaining_items = len(items)
 
-            lines.append(f"{lp:>2}. {gp:<18}  {qty:>10.1f} {jm:<2}  {szt:>6}")
+            # ile wpisów SAP dać na ten blok:
+            # bierzemy tyle, żeby zostawić po 1 dla każdego kolejnego bloku
+            take_n = max(1, remaining_items - (remaining_blocks - 1))
+
+            total_qty = 0.0
+            total_szt = 0
+            jm = items[0]["jm"] if items else "M"
+
+            for _ in range(take_n):
+                if not items:
+                    break
+                it = items.pop(0)
+                total_qty += float(it.get("qty", 0.0))
+                total_szt += int(it.get("szt", 0))
+
+            # debugowo możesz dopisać side w raporcie:
+            # lines.append(f"{lp:>2}. {gp:<18} {side}  {total_qty:>10.1f} {jm:<2}  {total_szt:>6}")
+            lines.append(f"{lp:>2}. {gp:<18}  {total_qty:>10.1f} {jm:<2}  {total_szt:>6}")
 
             rows.append({
                 "lp": lp,
                 "index": gp,
-                "qty_m": f"{qty:.1f} {jm}",
-                "pcs": f"{szt}",
+                "qty_m": f"{total_qty:.1f} {jm}",
+                "pcs": f"{total_szt}",
                 "pallets": "",
             })
             lp += 1
+
+
 
         # Informacja o braku pozycji w raporcie (nie znaleziono nic dla tej linii i startowego zlecenia)
         if not lines:
