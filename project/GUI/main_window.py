@@ -129,7 +129,7 @@ def run_app():
     
     text.configure(state="disabled")  # na start zablokowany do edycji
 
-    
+    # funkcja do pokazywania/ukrywania przycisków "Drukuj" i "Edytuj" w zależności od tego czy mamy aktualnie wygenerowany raport i jaki to jest raport
     def _set_print_visible(visible: bool) -> None:
         kind = app_state.get("last_report_kind")
 
@@ -149,16 +149,16 @@ def run_app():
         else:
             edit_btn.place_forget()
 
-            
+    # funkcja do wykrywania kolumny ze stroną (może się nazywać różnie, ale zwykle jest to jedna z kolumn "Zlecenie X" gdzie X to strona)        
     def _norm(text: str) -> str:
         return " ".join(str(text).replace("\xa0", " ").strip().lower().split())
 
-
+    # pomocnicza funkcja do sprawdzenia czy tekst zawiera któryś z aliasów (po normalizacji)
     def _contains_any(cell_text: str, aliases: list[str]) -> bool:
         t = _norm(cell_text)
         return any(a in t for a in aliases)
 
-
+    # funkcja do wykrywania wiersza nagłówków (szuka pierwszego w którym jest coś z ORDER_ALIASES i coś z GRUNDPROFIL_ALIASES)
     def detect_header_row(xlsx_path: str, max_scan_rows: int = 40) -> int:
         raw = pd.read_excel(xlsx_path, engine="openpyxl", header=None, nrows=max_scan_rows)
         for r in range(len(raw)):
@@ -169,14 +169,14 @@ def run_app():
                 return r
         raise ValueError("Nie wykryłem wiersza nagłówków (brak Zlecenie/Auftrag lub Grundprofil).")
 
-
+    # funkcja do wykrywania kolumny ze stroną (może się nazywać różnie, ale zwykle jest to jedna z kolumn "Zlecenie X" gdzie X to strona)
     def find_column(df: pd.DataFrame, aliases: list[str]) -> str:
         for col in df.columns:
             if _contains_any(col, aliases):
                 return col
         raise ValueError(f"Nie znalazłem kolumny pasującej do aliasów: {aliases}")
 
-
+    # funkcja do wykrywania kolumny ze stroną (może się nazywać różnie, ale zwykle jest to jedna z kolumn "Zlecenie X" gdzie X to strona)
     def load_hydra_queue(xlsx_path: str) -> pd.DataFrame:
         header_row = detect_header_row(xlsx_path)
         df = pd.read_excel(xlsx_path, engine="openpyxl", header=header_row)
@@ -203,12 +203,36 @@ def run_app():
         out = out[(out["order_id"] != "") & (out["grundprofil"] != "") & (out["side"] != "")]
         
         return out.reset_index(drop=True)
-        
+     
+     # funkcje do potwierdzenia terminu zlecenia (krok po kroku, z popupami)   
     def _normalize_order_id(s: str) -> str:
         s = str(s).strip()
-        s = re.sub(r"\.0$", "", s)      # usuń końcówkę .0
-        s = s.lstrip("0")              # usuń zera z przodu (do porównań)
+        s = re.sub(r"\.0$", "", s)
+        s = s.lstrip("0")
         return s if s != "" else "0"
+
+    # pomocnicza funkcja do obcięcia danych do konkretnego zlecenia (włącznie)
+    def cut_until_order(df: pd.DataFrame, order_id: str) -> pd.DataFrame:
+        if "order_id" not in df.columns:
+            raise ValueError("Brak kolumny order_id w danych. Wczytywanie pliku musi ją dodawać.")
+
+        want = _normalize_order_id(order_id)
+
+        tmp = df.copy()
+        tmp["_ord_norm"] = tmp["order_id"].map(_normalize_order_id)
+
+        hits = tmp.index[tmp["_ord_norm"] == want].tolist()
+        if not hits:
+            sample = tmp["order_id"].head(15).tolist()
+            raise ValueError(
+                f"Nie znaleziono zlecenia: {order_id}\n"
+                f"(pierwsze zlecenia w pliku: {sample})"
+            )
+
+        # od początku do tego zlecenia (włącznie)
+        last_idx = hits[-1]  # ostatnie wystąpienie zlecenia
+        return df.loc[:last_idx].reset_index(drop=True)
+
 
 
     def cut_from_order(df: pd.DataFrame, start_order_id: str) -> pd.DataFrame:
@@ -228,7 +252,309 @@ def run_app():
             )
 
         return df.loc[hits[0]:].reset_index(drop=True)
+    
+    def ask_order_id_popup(parent) -> str | None:
+        popup = ctk.CTkToplevel(parent)
+        popup.title("Potwierdź termin zlecenia")
+        popup.resizable(False, False)
+        popup.grab_set()
+        center_popup(parent, popup)
 
+        result = {"value": str()}  # używamy dict, żeby można było modyfikować w nested func
+
+        ctk.CTkLabel(popup, text="Znajdź zlecenie aby sprawdzić datę zakończenia").pack(padx=12, pady=(12, 6))
+        def only_digits(new_value: str) -> bool:
+            # pozwalamy na pusty (user jeszcze pisze)
+            return new_value.isdigit() or new_value == ""
+
+        vcmd = (popup.register(only_digits), "%P")        
+
+        v = tk.StringVar(value="")
+        entry = ctk.CTkEntry(popup, textvariable=v, width=320, validate="key", validatecommand=(vcmd))
+        entry.pack(padx=12, pady=(0, 10))
+        entry.focus_set()
+
+        def ok():
+            val = (v.get() or "").strip()
+            if not val:
+                messagebox.showwarning("Brak zlecenia", "Wpisz numer zlecenia.")
+                return
+            if not val.isdigit():
+                messagebox.showwarning("Błąd", "Zlecenie musi składać się z cyfr.")
+                return
+            result["value"] = val
+            popup.destroy()
+
+        btns = ctk.CTkFrame(popup, fg_color="transparent")
+        btns.pack(fill="x", padx=12, pady=(0, 12))
+
+        ctk.CTkButton(btns, text="Anuluj", command=popup.destroy).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btns, text="OK", command=ok).pack(side="right")
+
+        popup.wait_window()
+        return result["value"]
+    
+
+    def confirm_order_end_date():
+        # 1) wybór pliku (jak w Przelicz produkcję)
+        file_path = filedialog.askopenfilename(
+            title="Wybierz plik (Excel/CSV)",
+            filetypes=[
+                ("Excel files", ("*.xlsx", "*.xls")),
+                ("CSV files", ("*.csv",)),
+                ("All files", ("*.*",)),
+            ],
+        )
+        if not file_path:
+            return
+
+        # 2) wczytaj tak samo jak on_open_file, ale bez popupów i bez tableview
+        try:
+            ext = Path(file_path).suffix.lower()
+            if ext in (".xlsx", ".xls"):
+                df_raw = pd.read_excel(file_path, engine="openpyxl", header=1)
+            elif ext == ".csv":
+                df_raw = pd.read_csv(file_path, encoding="utf-8-sig", sep=",", low_memory=False)
+            else:
+                messagebox.showerror("Błąd", "Nieobsługiwany format pliku.")
+                return
+
+            df_raw.columns = [" ".join(str(c).replace("\xa0", " ").strip().split()) for c in df_raw.columns]
+            df_raw.columns = [str(c).strip() for c in df_raw.columns]
+
+            def find_col(df_cols, *candidates):
+                cols_norm = {str(c).strip(): str(c) for c in df_cols}
+                for cand in candidates:
+                    for k, original in cols_norm.items():
+                        if k == cand.strip():
+                            return original
+                return None
+
+            good_p_col = find_col(
+                df_raw.columns,
+                "Ilość dobrej produkcji (P)",
+                "Ilość dobrej produkcji(P)",
+                "Ilość dobrej produkcji P",
+            )
+
+            needed_fixed = [
+                "Stanowisko robocze",
+                "Artykuł",
+                "Docelowa wartość (P)",
+                "Jednostka (P)",
+                "Docelowa wartość (S)",
+                "Jednostka (S)",
+                "Rodzaj zlecenia",
+            ]
+            if good_p_col:
+                needed_fixed.insert(3, good_p_col)
+
+            zlecenie_cols = [c for c in df_raw.columns if c.startswith("Zlecenie")]
+            if len(zlecenie_cols) < 2:
+                raise ValueError("Brakuje drugiej kolumny 'Zlecenie' (tej ze stroną).")
+
+            df_tmp = df_raw[needed_fixed + zlecenie_cols].copy()
+            side_col = detect_side_column(df_tmp)
+
+            order_cols = [c for c in zlecenie_cols if c != side_col]
+            if not order_cols:
+                raise ValueError("Nie znalazłem kolumny z numerem zlecenia (poza kolumną strony).")
+            order_col = order_cols[0]
+
+            df = df_raw[needed_fixed + [order_col, side_col]].copy()
+
+            rename_map = {
+                "Stanowisko robocze": "workplace",
+                "Artykuł": "profile",
+                "Docelowa wartość (P)": "target_value_p",
+                "Jednostka (P)": "unit_p",
+                "Docelowa wartość (S)": "target_value_s",
+                "Jednostka (S)": "unit_s",
+                "Rodzaj zlecenia": "order_type",
+                order_col: "order_id",
+                side_col: "side",
+            }
+            if good_p_col:
+                rename_map[good_p_col] = "good_qty_p"
+
+            df = df.rename(columns=rename_map)
+
+            # good_qty_p
+            if "good_qty_p" in df.columns:
+                df["good_qty_p"] = (
+                    df["good_qty_p"]
+                    .astype(str)
+                    .str.replace("\xa0", "", regex=False)
+                    .str.replace(" ", "", regex=False)
+                    .str.replace(",", ".", regex=False)
+                )
+                df["good_qty_p"] = pd.to_numeric(df["good_qty_p"], errors="coerce").fillna(0.0)
+            else:
+                df["good_qty_p"] = 0.0
+
+            # profile / side / order_id
+            df["profile"] = (
+                df["profile"]
+                .astype("string")
+                .str.strip()
+                .str.split("-", n=1)
+                .str[0]
+            )
+            df["side"] = df["side"].astype("string").str.strip().str.replace(r"\.0$", "", regex=True).str.zfill(4)
+            df["order_id"] = df["order_id"].astype("string").str.strip().str.replace(r"\.0$", "", regex=True)
+
+        except Exception as e:
+            messagebox.showerror("Błąd wczytywania pliku", str(e))
+            return
+
+        # 3) zlecenie od usera
+        order_id = ask_order_id_popup(root)
+        if not order_id:
+            return
+
+        # 4) bierz tylko od początku do zlecenia
+        try:
+            df_cut = cut_until_order(df, order_id)
+        except Exception as e:
+            messagebox.showerror("Nie znaleziono zlecenia", str(e))
+            return
+
+        # 5) dalej liczenie identycznie jak calculate_production, tylko na df_cut
+        try:
+            df_cfg = app_state.get("cfg")
+            if df_cfg is None or df_cfg.empty:
+                df_cfg = load_profile_confing()
+                app_state["cfg"] = df_cfg
+        except Exception as e:
+            messagebox.showerror("Błąd wczytywania konfiguracji", str(e))
+            return
+
+        try:
+            df_mc = app_state.get("machine_cfg")
+            if df_mc is None or df_mc.empty:
+                df_mc = load_machine_config()
+                app_state["machine_cfg"] = df_mc
+        except Exception as e:
+            messagebox.showerror("Błąd wczytywania machine_config.csv", str(e))
+            return
+
+        workplaces = df_cut["workplace"].dropna().astype("string").str.strip().unique()
+        if len(workplaces) != 1:
+            messagebox.showerror("Wybór maszyny", f"W danych wykryto wiele maszyn: {list(workplaces)}")
+            return
+
+        workplace = workplaces[0]
+        row = df_mc.loc[df_mc["workplace"] == workplace]
+        if row.empty:
+            messagebox.showerror("Brak konfiguracji", f"Nie znaleziono workplace='{workplace}' w machine_config.csv")
+            return
+
+        default_speed = float(row.iloc[0]["speed_m_per_min"])
+        default_pieces_per_shift = int(row.iloc[0]["count_by_shift"])
+
+        choice = ask_calc_mode_popup(root, workplace, default_speed, default_pieces_per_shift)
+        if choice is None:
+            return
+
+        # --- poniżej: minimalnie potrzebny kawałek z calculate_production (ten sam wzór) ---
+        dfx = df_cut.copy()
+        df_cfg2 = df_cfg.copy()
+
+        df_cfg2["profile"] = df_cfg2["profile"].astype("string").str.strip()
+        df_cfg2["side"] = df_cfg2["side"].astype("string").str.strip().str.zfill(4)
+        df_cfg2["setting_time"] = pd.to_numeric(df_cfg2["setting_time"], errors="coerce")
+
+        dfx["profile"] = dfx["profile"].astype("string").str.strip()
+        dfx["side"] = dfx["side"].astype("string").str.strip().str.zfill(4)
+
+        dfx = dfx.merge(df_cfg2[["profile", "side", "setting_time"]], on=["profile", "side"], how="left")
+        missing = dfx[dfx["setting_time"].isna()]
+        if not missing.empty:
+            missing_pairs = missing[["profile", "side"]].drop_duplicates().head(20)
+            messagebox.showerror(
+                "Brak w configu",
+                "Nie znaleziono setting_time dla:\n"
+                + missing_pairs.to_string(index=False)
+                + ("\n..." if len(missing_pairs) >= 20 else "")
+            )
+            return
+
+        dfx.loc[dfx["side"] == "0020", "setting_time"] = 0
+
+        # metry pozostałe
+        target_p = pd.to_numeric(dfx["target_value_p"], errors="coerce").fillna(0.0)
+        good_p = pd.to_numeric(
+            dfx["good_qty_p"] if "good_qty_p" in dfx.columns else pd.Series(0, index=dfx.index),
+            errors="coerce"
+        ).fillna(0.0)
+        
+        unit = dfx["unit_p"].astype("string").str.strip().str.upper()
+
+        remaining_p = target_p.copy()
+        mask_started = good_p > 0
+        remaining_p.loc[mask_started] = (target_p - good_p).clip(lower=0.0)
+        dfx["length_m"] = remaining_p.where(unit == "M", 0.0)
+        total_m = float(dfx["length_m"].sum())
+
+        # sztuki (tu liczysz jak wcześniej — u Ciebie nie odejmujesz good_qty_s, więc zostawiamy tak samo)
+        pieces = pd.to_numeric(dfx["target_value_s"], errors="coerce").fillna(0.0)
+        total_pieces = float(pieces.sum())
+
+        unique_setups = dfx[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
+        real_setups = unique_setups[unique_setups["setting_time"] > 0]
+        total_setting_min = float(real_setups["setting_time"].sum())
+
+        total_run_min = 0.0
+        run_mode_line = ""
+
+        if choice["mode"] == "speed":
+            speed = float(choice["speed_m_per_min"])
+            total_run_min = total_m / speed if speed > 0 else 0.0
+            run_mode_line = f"Tryb biegu: {speed:.2f} m/min\n"
+        else:
+            pps = int(choice["pieces_per_shift"])
+            shifts_needed = (total_pieces / pps) if pps > 0 else 0.0
+            total_run_min = shifts_needed * 8.0 * 60.0
+            run_mode_line = f"Tryb biegu: {pps} szt./zmianę\n"
+
+        total_min = total_setting_min + total_run_min
+        shifts = (total_min / 60.0) / 8.0
+        rounded_shifts = round_shifts_custom(shifts)
+
+        calendar_mode = choice.get("calendar", "workdays")
+        include_weekends = (calendar_mode == "all")
+        start_shift = int(choice.get("start_shift", 1))
+
+        start_mode = choice.get("start_mode", "today")
+        start_date_str = choice.get("start_date", date.today().isoformat())
+        start_d = date.today() if start_mode != "date" else datetime.strptime(start_date_str, "%Y-%m-%d").date()
+
+        end_d, end_s = add_shifts(
+            start_date=start_d,
+            start_shift=start_shift,
+            shifts_count=rounded_shifts,
+            include_weekends=include_weekends,
+        )
+
+        # 6) pokaż wynik
+        result_text = (
+            f"--- Potwierdzenie terminu zlecenia ---\n\n"
+            f"Maszyna: {workplace}\n"
+            f"Zlecenie: {order_id}\n"
+            f"--------------------------------\n"
+            f"Zmiany (8h):  {shifts:.2f} → {rounded_shifts}\n"
+            f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}\n"
+            f"---------------------------------------------------------------------\n"
+            f"Zlecenie zakończy się: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n"
+        )
+
+        show_text_view()
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert("end", result_text)
+        text.configure(state="disabled")
+        _upadate_placeholder_visibility()
+    
     
     # raport zapotrzebowania: popup z parametrami + generowanie raportu
     def ask_report_params_popup(parent) -> dict | None:
@@ -2089,17 +2415,35 @@ def run_app():
             if good_p_col:
                 needed_fixed.insert(3, good_p_col)
 
+            # zlecenie_cols = [c for c in df_raw.columns if c.startswith("Zlecenie")]
+            # if len(zlecenie_cols) < 2:
+            #     raise ValueError("Brakuje drugiej kolumny 'Zlecenie' (tej ze stroną).")
+
+            # df = df_raw[needed_fixed + zlecenie_cols].copy()
+
+            # # wybierz tę kolumnę Zlecenie*, która jest stroną
+            # side_col = detect_side_column(df)
+
+            # # teraz zostaw tylko potrzebne kolumny + side_col
+            # df = df[needed_fixed + [side_col]].copy()
+            
             zlecenie_cols = [c for c in df_raw.columns if c.startswith("Zlecenie")]
             if len(zlecenie_cols) < 2:
                 raise ValueError("Brakuje drugiej kolumny 'Zlecenie' (tej ze stroną).")
 
             df = df_raw[needed_fixed + zlecenie_cols].copy()
 
-            # wybierz tę kolumnę Zlecenie*, która jest stroną
+            # kolumna strony
             side_col = detect_side_column(df)
 
-            # teraz zostaw tylko potrzebne kolumny + side_col
-            df = df[needed_fixed + [side_col]].copy()
+            # kolumna zlecenia (ta druga, nie-side)
+            order_cols = [c for c in zlecenie_cols if c != side_col]
+            if not order_cols:
+                raise ValueError("Nie znalazłem kolumny z numerem zlecenia (poza kolumną strony).")
+            order_col = order_cols[0]
+
+            # teraz zostaw potrzebne + order_col + side_col
+            df = df[needed_fixed + [order_col, side_col]].copy()            
             
             # 3) rename kolumn
             rename_map = {
@@ -2110,6 +2454,7 @@ def run_app():
                 "Docelowa wartość (S)": "target_value_s",
                 "Jednostka (S)": "unit_s",
                 "Rodzaj zlecenia": "order_type",
+                order_col: "order_id",
                 side_col: "side",
             }
             if good_p_col:
@@ -2130,6 +2475,14 @@ def run_app():
                 df["good_qty_p"] = pd.to_numeric(df["good_qty_p"], errors="coerce").fillna(0.0)
             else:
                 df["good_qty_p"] = 0.0
+                
+            df["order_id"] = (
+                df["order_id"]
+                .astype("string")
+                .str.strip()
+                .str.replace(r"\.0$", "", regex=True)
+            )
+                
 
 
             # fallback gdy jednak nie było kolumny wykonania
@@ -2266,14 +2619,17 @@ def run_app():
     count_production_btn.grid(row=2, column=0, pady=(0, 10), sticky="ew")
     generate_report_btn = customtkinter.CTkButton(left, text="Generuj raport", command=generate_logistics_report)
     generate_report_btn.grid(row=3, column=0, pady=(0, 10), sticky="ew")
+    confirm_order_btn = customtkinter.CTkButton(left, text="Potwierdź termin\nzlecenia", command=confirm_order_end_date)
+    confirm_order_btn.grid(row=4, column=0, pady=(0, 10), sticky="ew")
+
 
     clean_btn = customtkinter.CTkButton(left, text="Wyczyść", command=clean_text)
-    clean_btn.grid(row=4, column=0, pady=(0, 10), sticky="ew")
+    clean_btn.grid(row=5, column=0, pady=(0, 10), sticky="ew")
     # umieść przycisk przełączania motywu w lewym panelu, aby pasował do pozostałych kontrolek
     # ustaw początkowy tekst zgodnie z aktualnym trybem wyglądu
 
     toogle_text = "Jasny motyw" if customtkinter.get_appearance_mode() == "Dark" else "Ciemny motyw"
     ch_theme = customtkinter.CTkButton(left, text=toogle_text, command=change)
-    ch_theme.grid(row=5, column=0, pady=(20, 10), sticky="ew")
+    ch_theme.grid(row=6, column=0, pady=(20, 10), sticky="ew")
 
     root.mainloop()
