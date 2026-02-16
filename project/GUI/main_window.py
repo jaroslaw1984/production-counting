@@ -904,6 +904,8 @@ def run_app():
                 use_smart_matching = False
             else:
                 required_map = _calc_required_m_by_block_from_plan(df_cut_plan)
+                print("required_map sample:", list(required_map.items())[:5])
+
 
 
  
@@ -972,9 +974,13 @@ def run_app():
         lines = []
         rows = []
         lp = 1
+        
 
+
+        # iterujemy po blokach z Hydry w kolejności, próbując dobrać pozycje z SAP/DB dla każdego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
         for gp, side in blocks:
             items = sap_rows_by_index.get(gp, [])
+            items.sort(key=lambda it: float(it.get("qty", 0.0) or 0.0))
             if not items:
                 continue
 
@@ -983,7 +989,8 @@ def run_app():
             occ_no = hydra_occ_by_index[gp]
 
             required_m = required_map.get((gp, occ_no))
-
+            
+            # dobieramy pozycje z SAP/DB dla tego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
             total_qty = 0.0
             total_szt = 0
             jm = items[0]["jm"] if items else "M"
@@ -994,30 +1001,67 @@ def run_app():
                     total_qty += float(it.get("qty", 0.0))
                     total_szt += int(it.get("szt", 0))
             else:
-                # fallback: stara logika (gdy nie umiemy policzyć metrów dla tego bloku)
-                used_blocks[gp] += 1
-                remaining_blocks = blocks_count[gp] - used_blocks[gp] + 1
-                remaining_items = len(items)
-                take_n = max(1, remaining_items - (remaining_blocks - 1))
+                # fallback bezpieczny: nie wiemy ile metrów potrzeba, więc NIE sumujemy kilku pozycji naraz,
+                # tylko bierzemy 1 najmniejszą, żeby rozrzucić je po blokach.
+                it = items.pop(0)
+                total_qty += float(it.get("qty", 0.0))
+                total_szt += int(it.get("szt", 0))
 
-                for _ in range(take_n):
-                    if not items:
-                        break
-                    it = items.pop(0)
-                    total_qty += float(it.get("qty", 0.0))
-                    total_szt += int(it.get("szt", 0))
-
+            # dodaj linię do raportu
             lines.append(f"{lp:>2}. {gp:<18}  {total_qty:>10.1f} {jm:<2}  {total_szt:>6}")
-
+            for idx, lst in sap_rows_by_index.items():
+                lst.sort(key=lambda it: float(it.get("qty", 0.0) or 0.0))
+            
+            # dodatkowo zbieramy dane strukturalne do DOCX
             rows.append({
                 "lp": lp,
                 "index": gp,
-                "qty_m": f"{total_qty:.1f} {jm}",
-                "pcs": f"{total_szt}",
+                "qty": float(total_qty),
+                "jm": jm,
+                "szt": int(total_szt),
                 "pallets": "",
             })
+
             lp += 1
 
+        # --- DOMKNIĘCIE: resztki SAP dla indeksów, które zostały niewykorzystane ---
+        for idx, leftovers in sap_rows_by_index.items():
+            if not leftovers:
+                continue
+
+            extra_qty = sum(float(it.get("qty", 0.0) or 0.0) for it in leftovers)
+            extra_szt = sum(int(it.get("szt", 0) or 0) for it in leftovers)
+
+            if extra_qty <= 0 and extra_szt <= 0:
+                continue
+
+            # znajdź ostatni wiersz tego indeksu w raporcie
+            last_pos = None
+            for i in range(len(rows) - 1, -1, -1):
+                if rows[i]["index"] == idx:
+                    last_pos = i
+                    break
+
+            if last_pos is None:
+                # indeks był w SAP, ale nie wystąpił w Hydra-blokach -> pomiń (albo dopisz nową linię, jeśli chcesz)
+                continue
+
+            rows[last_pos]["qty"] += extra_qty
+            rows[last_pos]["szt"] += extra_szt
+
+            # wyczyść resztki żeby było jasne, że zostały “skonsumowane”
+            leftovers.clear()
+            
+        def _rows_to_lines(rows: list[dict]) -> list[str]:
+            out = []
+            for r in rows:
+                out.append(
+                    f'{r["lp"]:>2}. {r["index"]:<18}  {float(r["qty"]):>10.1f} {r["jm"]:<2}  {int(r["szt"]):>6}'
+                )
+            return out
+
+        # ... po domknięciu resztek:
+        lines = _rows_to_lines(rows)
 
 
         # Informacja o braku pozycji w raporcie (nie znaleziono nic dla tej linii i startowego zlecenia)
@@ -1070,7 +1114,17 @@ def run_app():
             "user": sap_user or "",
             "line": linia_value,
             "machine": machine_label_from_line(linia_value),
-            "rows": rows
+            "rows": [
+                {
+                    "lp": r["lp"],
+                    "index": r["index"],
+                    "qty_m": f'{r["qty"]:.1f} {r["jm"]}',
+                    "pcs": str(r["szt"]),
+                    "pallets": "",
+                }
+                for r in rows
+            ]
+
         }
 
         _set_print_visible(True)   # jeśli masz przycisk druku ukrywany/pokazywany
