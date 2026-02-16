@@ -2415,6 +2415,7 @@ def run_app():
                 messagebox.showerror("Błąd configu", f"Brak kolumny '{col}' w profile_config.csv")
                 return
 
+        # normalizacja configu (na wszelki wypadek)
         df_cfg = df_cfg.copy()
         df_cfg["profile"] = df_cfg["profile"].astype("string").str.strip()
         df_cfg["side"] = df_cfg["side"].astype("string").str.strip().str.zfill(4)
@@ -2423,6 +2424,7 @@ def run_app():
         # merge
         df = df.merge(df_cfg[["profile", "side", "setting_time"]], on=["profile", "side"], how="left")
 
+        # kontrola brakujących setting_time po merge'u
         missing = df[df["setting_time"].isna()]
         if not missing.empty:
             missing_pairs = missing[["profile", "side"]].drop_duplicates().head(20)
@@ -2473,7 +2475,8 @@ def run_app():
         # --- CZAS BIEGU (wg trybu z popupu) ---
         total_run_min = 0.0
         run_mode_line = ""
-
+        
+        # prędkość
         if choice["mode"] == "speed":
             speed = float(choice["speed_m_per_min"])
             if speed <= 0:
@@ -2499,6 +2502,7 @@ def run_app():
         total_h = total_min / 60.0
         shifts = total_h / 8.0
         
+        # kalendarz i przewidywana data zakończenia
         calendar_mode = choice.get("calendar", "workdays")
         include_weekends = (calendar_mode == "all")
         start_shift = int(choice.get("start_shift", 1))
@@ -2523,10 +2527,11 @@ def run_app():
             start_shift=start_shift,
             shifts_count=rounded_shifts,
             include_weekends=include_weekends
-)
+            )
         
         end_line = f"Przewidywana produkcja do: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n"
 
+        # tekst podsumowania
         result_text = (
             f"Stanowisko:   {workplace}\n"
             f"Pozycje w planie: {len(df)}\n"
@@ -2544,11 +2549,13 @@ def run_app():
             f"{end_line}"
         )
 
-        
+        # szczegóły zbrojeń
         configs = real_setups[["profile", "side", "setting_time"]].sort_values(["profile", "side"])
 
+        # ustawienie tekstu w widoku i pokazanie
         result_text += "\nKonfiguracja czasów dla zbrojeń:\n" + configs.to_string(index=False)
         
+        # ustaw tekst i pokaż
         text.configure(state="normal")
         text.delete("1.0", "end")
         text.insert("end", result_text)
@@ -2557,9 +2564,6 @@ def run_app():
         
         show_text_view()
 
-        # Debug / opcjonalnie podgląd:
-        # show_table_from_df(df)
-        
      # funkcja zapisu konfiguracji maszyn   
     def save_machine_config(df_mc: pd.DataFrame, path: Path) -> None:
         df_mc.to_csv(path, sep=";", index=False, encoding="utf-8")
@@ -2589,7 +2593,6 @@ def run_app():
                 return col
 
         raise ValueError("Nie znaleziono kolumny strony (20/21/22/23).")
-    # budujesz raport i pokazujesz / zapisujesz
 
 
 
