@@ -614,6 +614,22 @@ def run_app():
         )
         start_entry.pack(anchor="w", padx=12, pady=(0, 12))
         start_entry.focus_set()
+        
+        # --- Dzień danych (SAP/DB) ---
+        day_mode_var = tk.StringVar(value="today")  # today | date
+        day_str_var = tk.StringVar(value=date.today().isoformat())
+
+        day_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        day_frame.pack(fill="x", padx=12, pady=(0, 10))
+
+        ctk.CTkLabel(day_frame, text="Dane z dnia:", width=60, anchor="w").pack(side="left")
+        ctk.CTkRadioButton(day_frame, text="dziś", width=60,  variable=day_mode_var, value="today").pack(side="left", padx=5)
+        ctk.CTkRadioButton(day_frame, text="z daty", width=60, variable=day_mode_var, value="date").pack(side="left", padx=5)
+
+        day_entry = ctk.CTkEntry(day_frame, width=140, textvariable=day_str_var)
+        day_entry.pack(side="left", padx=10)
+        ctk.CTkLabel(day_frame, text="(YYYY-MM-DD)", text_color="#aaaaaa").pack(side="left")
+        
 
         def on_ok():
             nonlocal result
@@ -630,8 +646,21 @@ def run_app():
                     "Startowe zlecenie musi składać się wyłącznie z cyfr."
                 )
                 return
+            
+            # --- parsowanie dnia ---
+            mode = day_mode_var.get()
+            ds = (day_str_var.get() or "").strip()
 
-            result = {"linia": linia, "start_order_id": start_order_id}
+            if mode == "date":
+                try:
+                    day_value = datetime.strptime(ds, "%Y-%m-%d").date()
+                except ValueError:
+                    messagebox.showerror("Błąd daty", "Podaj datę w formacie YYYY-MM-DD.")
+                    return
+            else:
+                day_value = date.today()
+
+            result = {"linia": linia, "start_order_id": start_order_id, "day": day_value}            
             popup.destroy()
 
         def on_cancel():
@@ -703,11 +732,13 @@ def run_app():
 
         # 2) start zlecenia
         params = ask_report_params_popup(root)
+        
         if not params:
             return
 
         linia_value = params["linia"]
         start_order_id = params["start_order_id"]
+        day_value = params.get("day", date.today())
         
         snap = load_snapshot_if_today()
         if snap and isinstance(snap.get("end_by_machine"), dict):
@@ -894,11 +925,6 @@ def run_app():
         sap_user = None
         sap_date = None
         
-        # linia_value = ask_line_popup(root)
-        # if not linia_value:
-        #     return
-        
-        day_value = date.today()
         
         try:
             df_sap = fetch_sap_basic_profiles(linia=linia_value, day=day_value)
@@ -1001,7 +1027,7 @@ def run_app():
                 "Nie znaleziono żadnych pozycji dla wybranej linii i startowego zlecenia.\n\n"
                 "Możliwe przyczyny:\n"
                 "• zlecenie jest na innej maszynie/linii\n"
-                "• brak danych w SAP/DB dla tej linii (dziś)\n"
+                f"• brak danych w SAP/DB dla tej linii (dniu: {day_value})\n"
                 "• problem z połączeniem z bazą\n"
             )
             _set_print_visible(False)
@@ -2715,6 +2741,17 @@ def run_app():
         text.insert("end", df.head(50).to_string(index=False))
         text.configure(state="disabled")
         _upadate_placeholder_visibility()
+        
+        try:
+            sample = df[["order_id", "profile_full", "target_value_p", "unit_p"]].head(10).to_string(index=False)
+        except Exception:
+            sample = df.head(10).to_string(index=False)
+
+        messagebox.showinfo(
+            "TEST normalizacji liczb",
+            "Pierwsze 10 wierszy po normalizacji:\n\n" + sample
+        )
+                
 
     def show_about_popup(parent):
         popup = customtkinter.CTkToplevel(parent)
