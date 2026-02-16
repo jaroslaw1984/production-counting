@@ -321,7 +321,7 @@ def run_app():
 
             df_raw.columns = [" ".join(str(c).replace("\xa0", " ").strip().split()) for c in df_raw.columns]
             df_raw.columns = [str(c).strip() for c in df_raw.columns]
-
+                
             def find_col(df_cols, *candidates):
                 cols_norm = {str(c).strip(): str(c) for c in df_cols}
                 for cand in candidates:
@@ -378,7 +378,19 @@ def run_app():
                 rename_map[good_p_col] = "good_qty_p"
 
             df = df.rename(columns=rename_map)
-
+            
+            # --- NORMALIZACJA LICZB (ważne dla 45,5 itd.) ---
+            for col in ("target_value_p", "target_value_s"):
+                if col in df.columns:
+                    df[col] = (
+                        df[col]
+                        .astype(str)
+                        .str.replace("\xa0", "", regex=False)   # twarda spacja
+                        .str.replace(" ", "", regex=False)
+                        .str.replace(",", ".", regex=False)    # PRZECINEK -> KROPKA
+                    )
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+            
             # good_qty_p
             if "good_qty_p" in df.columns:
                 df["good_qty_p"] = (
@@ -463,9 +475,9 @@ def run_app():
         df_cfg2["profile"] = df_cfg2["profile"].astype("string").str.strip()
         df_cfg2["side"] = df_cfg2["side"].astype("string").str.strip().str.zfill(4)
         df_cfg2["setting_time"] = pd.to_numeric(df_cfg2["setting_time"], errors="coerce")
-
-        dfx["profile"] = dfx["profile"].astype("string").str.strip()
-        dfx["side"] = dfx["side"].astype("string").str.strip().str.zfill(4)
+        
+        profile_col = "profile_full" if "profile_full" in dfx.columns else "profile"
+        dfx["profile"] = dfx[profile_col].astype("string").str.strip()
 
         dfx = dfx.merge(df_cfg2[["profile", "side", "setting_time"]], on=["profile", "side"], how="left")
         missing = dfx[dfx["setting_time"].isna()]
@@ -673,6 +685,7 @@ def run_app():
                     "Lub (jeśli zapisywałeś terminy) upewnij się, że istnieje zapis z dzisiejszego dnia."
                 )
                 return
+            
         
         # 1) wybór pliku Hydry
         file_path = filedialog.askopenfilename(
@@ -696,9 +709,6 @@ def run_app():
         linia_value = params["linia"]
         start_order_id = params["start_order_id"]
         
-        end_by_machine = app_state.get("end_by_machine") or {}
-        shift_line = end_by_machine.get(linia_value)
-        
         snap = load_snapshot_if_today()
         if snap and isinstance(snap.get("end_by_machine"), dict):
             end_by_machine = snap["end_by_machine"]
@@ -721,9 +731,149 @@ def run_app():
             messagebox.showerror("Błąd startu grupy", str(e))
             return
 
+        df_plan = app_state.get("df")
+
+        df_plan_df: pd.DataFrame | None = None
+        use_smart_matching = False
+
+        if isinstance(df_plan, pd.DataFrame) and not df_plan.empty:
+            df_plan_df = df_plan
+            use_smart_matching = True
+
+
         blocks = build_blocks(df_group)
         blocks_count = Counter(gp for gp, _side in blocks)
         used_blocks = defaultdict(int)  # ile bloków danego indeksu już obsłużyliśmy    
+        
+              
+
+        def _calc_required_m_by_block_from_plan(df_cut_plan: pd.DataFrame) -> dict[tuple[str, int], float]:
+            """
+            Z planu liczymy metry do zrobienia dla kolejnych BLOKÓW jednego INDEKSU (bez side),
+            bo SAP podstaw nie rozróżnia strony, a side w Hydra/plan często się nie zgadza.
+            Zwraca mapę: (index, occurrence_index) -> required_m
+            """
+            dfx = df_cut_plan.copy()
+
+            # INDEKS: pełny (HO9021-40000SL itd.)
+            profile_col = "profile_full" if "profile_full" in dfx.columns else "profile"
+            dfx["index"] = dfx[profile_col].astype("string").str.strip()
+
+            target_p = pd.to_numeric(dfx["target_value_p"], errors="coerce").fillna(0.0)
+
+            if "good_qty_p" in dfx.columns:
+                good_p = pd.to_numeric(dfx["good_qty_p"], errors="coerce").fillna(0.0)
+            else:
+                good_p = pd.Series(0.0, index=dfx.index)
+
+            unit = dfx["unit_p"].astype("string").str.strip().str.upper()
+
+            remaining_p = target_p.copy()
+            mask_started = good_p > 0
+            remaining_p.loc[mask_started] = (target_p - good_p).clip(lower=0.0)
+
+            # tylko metry
+            dfx["_m"] = remaining_p.where(unit == "M", 0.0)
+
+            # BLOKI: kolejne ciągi tego samego INDEKSU (ignorujemy side)
+            out: dict[tuple[str, int], float] = {}
+            occ: dict[str, int] = defaultdict(int)
+
+            prev_idx = None
+            start_i = 0
+
+            idx_list = dfx["index"].tolist()
+            for i, idx in enumerate(idx_list):
+                if idx != prev_idx:
+                    if prev_idx is not None:
+                        occ[prev_idx] += 1
+                        out[(prev_idx, occ[prev_idx])] = float(dfx.loc[start_i:i-1, "_m"].sum())
+                    prev_idx = idx
+                    start_i = i
+
+            if prev_idx is not None and len(dfx) > 0:
+                occ[prev_idx] += 1
+                out[(prev_idx, occ[prev_idx])] = float(dfx.loc[start_i:, "_m"].sum())
+
+            return out
+
+        def pick_items_best_fit(
+            items: list[dict],
+            required_m: float,
+            *,
+            max_over_ratio: float = 3.0,
+            rel_tol: float = 0.20,
+            abs_tol: float = 10.0,
+        ) -> list[dict]:
+            """
+            Dobiera pozycje z listy `items` (SAP/DB) dla wymaganego metrażu `required_m`.
+
+            Zasady:
+            - nie wolno dobrać mniej niż wymagane (w praktyce: po sumie >= required),
+            - preferuj pojedynczą pozycję możliwie bliską wymaganemu (>= required),
+            - unikaj absurdalnych „gigantów” (limit max_over_ratio),
+            - jeśli nie ma jednej wystarczającej: sumuj największe aż suma >= required,
+            - usuwa wybrane elementy z `items` (in-place) i zwraca listę wybranych.
+            """
+            if not items:
+                return []
+            req = float(required_m or 0.0)
+            if req <= 0:
+                return []
+
+            # normalizacja qty
+            def q(it): 
+                return float(it.get("qty", 0.0) or 0.0)
+
+            # kandydaci >= req
+            bigger = [it for it in items if q(it) >= req]
+            if bigger:
+                # 1) najpierw spróbuj „rozsądnych” (nie za wielkich)
+                reasonable = [it for it in bigger if q(it) <= req * max_over_ratio]
+
+                candidates = reasonable if reasonable else bigger
+
+                # 2) jeśli jest coś „prawie równego” (przybliżenie), bierz najbliższe
+                # progi: rel_tol=20% albo abs_tol=10m (cokolwiek większe)
+                tol = max(req * rel_tol, abs_tol)
+                near = [it for it in candidates if (q(it) - req) <= tol]
+
+                best_pool = near if near else candidates
+                best = min(best_pool, key=lambda it: (q(it) - req, q(it)))  # minimalny nadmiar
+                items.remove(best)
+                return [best]
+
+            # brak pojedynczej >= req → sumujemy największe aż dobijemy do req
+            picked: list[dict] = []
+            total = 0.0
+            for it in sorted(items, key=q, reverse=True):
+                picked.append(it)
+                total += q(it)
+                items.remove(it)
+                if total >= req:
+                    break
+            return picked
+
+        
+        required_map = {}
+        hydra_occ_by_index: dict[str, int] = defaultdict(int)
+
+        if use_smart_matching:
+            # tu df_plan_df na pewno jest DataFrame (dla Pylance też)
+            assert df_plan_df is not None
+
+            try:
+                df_cut_plan = cut_from_order(df_plan_df, start_order_id)
+            except Exception:
+                messagebox.showwarning(
+                    "Plan nie pasuje do startowego zlecenia",
+                    "Nie znalazłem startowego zlecenia w planie produkcji.\n"
+                    "Raport zostanie wygenerowany bez inteligentnego dopasowania (stary tryb)."
+                )
+                use_smart_matching = False
+            else:
+                required_map = _calc_required_m_by_block_from_plan(df_cut_plan)
+
 
  
         # 3) na MVP wypisz w oknie wynik
@@ -802,28 +952,35 @@ def run_app():
             if not items:
                 continue
 
-            used_blocks[gp] += 1
-            remaining_blocks = blocks_count[gp] - used_blocks[gp] + 1  # ile bloków (włącznie z tym) jeszcze zostało
+            # wystąpienie tego bloku w kolejności Hydry
+            hydra_occ_by_index[gp] += 1
+            occ_no = hydra_occ_by_index[gp]
 
-            remaining_items = len(items)
-
-            # ile wpisów SAP dać na ten blok:
-            # bierzemy tyle, żeby zostawić po 1 dla każdego kolejnego bloku
-            take_n = max(1, remaining_items - (remaining_blocks - 1))
+            required_m = required_map.get((gp, occ_no))
 
             total_qty = 0.0
             total_szt = 0
             jm = items[0]["jm"] if items else "M"
 
-            for _ in range(take_n):
-                if not items:
-                    break
-                it = items.pop(0)
-                total_qty += float(it.get("qty", 0.0))
-                total_szt += int(it.get("szt", 0))
+            if required_m is not None and required_m > 0:
+                picked = pick_items_best_fit(items, required_m, max_over_ratio=3.0, rel_tol=0.25, abs_tol=15.0)
+                for it in picked:
+                    total_qty += float(it.get("qty", 0.0))
+                    total_szt += int(it.get("szt", 0))
+            else:
+                # fallback: stara logika (gdy nie umiemy policzyć metrów dla tego bloku)
+                used_blocks[gp] += 1
+                remaining_blocks = blocks_count[gp] - used_blocks[gp] + 1
+                remaining_items = len(items)
+                take_n = max(1, remaining_items - (remaining_blocks - 1))
 
-            # debugowo możesz dopisać side w raporcie:
-            # lines.append(f"{lp:>2}. {gp:<18} {side}  {total_qty:>10.1f} {jm:<2}  {total_szt:>6}")
+                for _ in range(take_n):
+                    if not items:
+                        break
+                    it = items.pop(0)
+                    total_qty += float(it.get("qty", 0.0))
+                    total_szt += int(it.get("szt", 0))
+
             lines.append(f"{lp:>2}. {gp:<18}  {total_qty:>10.1f} {jm:<2}  {total_szt:>6}")
 
             rows.append({
@@ -1518,11 +1675,16 @@ def run_app():
         app_state["production_calculated"] = True
         
         if save_snapshot_flag:
-            meta = {
-                "selected_machines": selected_machines,
-                "pps_by_machine": pps_by_machine,
-            }
-            save_snapshot(end_by_machine=end_by_machine)
+            save_snapshot(
+                end_by_machine=end_by_machine,
+                meta={
+                    "calendar": calendar_mode,
+                    "start_shift": start_shift,
+                    "start_date": start_d.isoformat(),
+                    "selected_machines": selected_machines,
+                    "pps_by_machine": pps_by_machine,
+                }
+            )
         
 
     # funkcja wczytująca dane maszyn z DB i pokazująca popup wyboru maszyn
@@ -1554,7 +1716,7 @@ def run_app():
     def _snapshot_path() -> Path:
         return _get_app_data_dir() / "production_snapshot.json"
 
-    def save_snapshot(end_by_machine: dict[str, str]) -> None:
+    def save_snapshot(end_by_machine: dict[str, str], meta: dict[str, Any] | None = None) -> None:
         path = _snapshot_path()
         today = date.today().isoformat()
 
@@ -1577,6 +1739,7 @@ def run_app():
             "snapshot_date": today,
             "created_at": datetime.now().isoformat(timespec="seconds"),
             "end_by_machine": end_by_machine,
+            "meta": meta or {},
         }
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -2464,6 +2627,19 @@ def run_app():
             df["good_qty_p"] = pd.to_numeric(df["good_qty_p"], errors="coerce").fillna(0.0)
             
             
+            # --- NORMALIZACJA LICZB (ważne dla 45,5 itd.) ---
+            for col in ("target_value_p", "target_value_s"):
+                if col in df.columns:
+                    df[col] = (
+                        df[col]
+                        .astype(str)
+                        .str.replace("\xa0", "", regex=False)   # twarda spacja
+                        .str.replace(" ", "", regex=False)
+                        .str.replace(",", ".", regex=False)    # PRZECINEK -> KROPKA
+                    )
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+            
+            
             if "good_qty_p" in df.columns:
                 df["good_qty_p"] = (
                     df["good_qty_p"]
@@ -2490,13 +2666,11 @@ def run_app():
                 df["good_qty_p"] = 0.0
 
             # 4) czyść dane w kolumnach profile i side
-            df["profile"] = (
-                df["profile"]
-                .astype("string")
-                .str.strip()
-                .str.split("-", n=1)
-                .str[0]
-            )
+            df["profile_full"] = df["profile"].astype("string").str.strip()
+
+            # baza pod config / zbrojenia (Twoja dotychczasowa logika)
+            df["profile"] = df["profile_full"].str.split("-", n=1).str[0]
+
 
             app_state["df"] = df  # zapamiętaj
 
