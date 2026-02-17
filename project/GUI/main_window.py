@@ -917,10 +917,6 @@ def run_app():
                     "Raport zostanie wygenerowany bez inteligentnego dopasowania (stary tryb)."
                 )
                 use_smart_matching = False
-            else:
-                required_map = _calc_required_m_by_block_from_plan(df_cut_plan)
-                print("required_map sample:", list(required_map.items())[:5])
-
 
 
  
@@ -1095,6 +1091,7 @@ def run_app():
                 "• problem z połączeniem z bazą\n"
             )
             _set_print_visible(False)
+            back_to_home()
 
             text.configure(state="normal")
             text.delete("1.0", "end")
@@ -2641,12 +2638,6 @@ def run_app():
             f"---------------------------------------------------------------------\n"
             f"{end_line}"
         )
-
-        # szczegóły zbrojeń
-        configs = real_setups[["profile", "side", "setting_time"]].sort_values(["profile", "side"])
-
-        # ustawienie tekstu w widoku i pokazanie
-        result_text += "\nKonfiguracja czasów dla zbrojeń:\n" + configs.to_string(index=False)
         
         # ustaw tekst i pokaż
         text.configure(state="normal")
