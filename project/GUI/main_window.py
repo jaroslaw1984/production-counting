@@ -936,9 +936,6 @@ def run_app():
                 
         
         # --- SAP -> mapy ilości ---
-        sap_qty = {}
-        sap_jm = {}
-        sap_szt = {}
         sap_user = None
         sap_date = None
         
