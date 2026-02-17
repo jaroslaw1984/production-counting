@@ -1430,14 +1430,6 @@ def run_app():
         placeholder_desc.place_forget()
         placeholder_ver.place_forget()
 
-    # # helper: aktualizuje widoczność placeholdera w textboxie
-    # def :
-    #     # sprawdź zawartość i pokaż/ukryj placeholder
-    #     content = text.get("1.0", "end-1c")
-    #     if content.strip():
-    #         placeholder_lbl.place_forget()
-    #     else:
-    #         placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
             
     # funkcja pokazująca popup wyboru maszyn
     def show_machine_select_popup(machines: list[str], on_confirm):
@@ -1743,10 +1735,7 @@ def run_app():
        
     # funkcja przeliczająca produkcję z DB i pokazująca wyniki w textboxie    
     def calculate_from_db(selected_machines, pps_by_machine, save_snapshot_flag: bool = False):
-        # 1) parametry czasu (ten sam popup co w Excelu)
-        # bierzemy default szt./zmianę z pierwszej zaznaczonej maszyny
-        default_pps = int(pps_by_machine.get(selected_machines[0], 0)) if selected_machines else 0
-
+        # 1) pokaż popup wyboru zakresu dat i kalendarza (robocze vs wszystkie dni)
         choice = ask_schedule_popup(root) 
         
         if not choice:
