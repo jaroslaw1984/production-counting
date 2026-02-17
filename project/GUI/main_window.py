@@ -905,7 +905,12 @@ def run_app():
         
         required_map = {}
         hydra_occ_by_index: dict[str, int] = defaultdict(int)
-
+        
+        
+        # SMART MATCHING:
+        # required_map liczy metry "blok po bloku" na podstawie planu (ignoruje side),
+        # żeby lepiej dopasować wiele pozycji SAP do wielu bloków Hydry dla jednego indeksu.
+        # Jeśli zauważysz rozjazdy (złe pozycje SAP przypisane do bloków) -> ustaw SMART_MATCHING_ENABLED = False.
         if use_smart_matching:
             # tu df_plan_df na pewno jest DataFrame (dla Pylance też)
             assert df_plan_df is not None
@@ -919,7 +924,9 @@ def run_app():
                     "Raport zostanie wygenerowany bez inteligentnego dopasowania (stary tryb)."
                 )
                 use_smart_matching = False
-
+            else:
+                # TYLKO jeśli cut się powiódł
+                required_map = _calc_required_m_by_block_from_plan(df_cut_plan)
 
  
         # 3) na MVP wypisz w oknie wynik
