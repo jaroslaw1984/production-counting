@@ -18,7 +18,7 @@ from docx.oxml.ns import qn
 from project.config.db_loader import fetch_available_machines, fetch_orders_for_machines, normalize_db_df, fetch_sap_basic_profiles
 from project.config.workplace_config_provider import merge_db_and_csv_config
 from project.config.count_per_loader import update_count_by_shift
-from project.GUI.ui_texts import HELP_PLACEHOLDER
+from project.GUI.ui_texts import ASCII_LOGO, HOME_SUBTITLE, HOME_DESC, HOME_VERSION
 from collections import Counter, defaultdict
 
 
@@ -306,6 +306,7 @@ def run_app():
             ],
         )
         if not file_path:
+            back_to_home()
             return
 
         # 2) wczytaj tak samo jak on_open_file, ale bez popupów i bez tableview
@@ -317,6 +318,7 @@ def run_app():
                 df_raw = pd.read_csv(file_path, encoding="utf-8-sig", sep=",", low_memory=False)
             else:
                 messagebox.showerror("Błąd", "Nieobsługiwany format pliku.")
+                back_to_home()
                 return
 
             df_raw.columns = [" ".join(str(c).replace("\xa0", " ").strip().split()) for c in df_raw.columns]
@@ -417,11 +419,13 @@ def run_app():
 
         except Exception as e:
             messagebox.showerror("Błąd wczytywania pliku", str(e))
+            back_to_home()
             return
 
         # 3) zlecenie od usera
         order_id = ask_order_id_popup(root)
         if not order_id:
+            back_to_home()
             return
 
         # 4) bierz tylko od początku do zlecenia
@@ -429,6 +433,7 @@ def run_app():
             df_cut = cut_until_order(df, order_id)
         except Exception as e:
             messagebox.showerror("Nie znaleziono zlecenia", str(e))
+            back_to_home()
             return
 
         # 5) dalej liczenie identycznie jak calculate_production, tylko na df_cut
@@ -439,6 +444,7 @@ def run_app():
                 app_state["cfg"] = df_cfg
         except Exception as e:
             messagebox.showerror("Błąd wczytywania konfiguracji", str(e))
+            back_to_home()
             return
 
         try:
@@ -448,17 +454,20 @@ def run_app():
                 app_state["machine_cfg"] = df_mc
         except Exception as e:
             messagebox.showerror("Błąd wczytywania machine_config.csv", str(e))
+            back_to_home()
             return
 
         workplaces = df_cut["workplace"].dropna().astype("string").str.strip().unique()
         if len(workplaces) != 1:
             messagebox.showerror("Wybór maszyny", f"W danych wykryto wiele maszyn: {list(workplaces)}")
+            back_to_home()
             return
 
         workplace = workplaces[0]
         row = df_mc.loc[df_mc["workplace"] == workplace]
         if row.empty:
             messagebox.showerror("Brak konfiguracji", f"Nie znaleziono workplace='{workplace}' w machine_config.csv")
+            back_to_home()
             return
 
         default_speed = float(row.iloc[0]["speed_m_per_min"])
@@ -565,7 +574,7 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", result_text)
         text.configure(state="disabled")
-        _upadate_placeholder_visibility()
+        
     
     
     # raport zapotrzebowania: popup z parametrami + generowanie raportu
@@ -713,6 +722,7 @@ def run_app():
                     "2) Przelicz produkcję\n\n"
                     "Lub (jeśli zapisywałeś terminy) upewnij się, że istnieje zapis z dzisiejszego dnia."
                 )
+                back_to_home()
                 return
             
         
@@ -722,18 +732,21 @@ def run_app():
             filetypes=[("Excel", "*.xlsx")]
         )
         if not file_path:
+            back_to_home()
             return
 
         try:
             df_hydra = load_hydra_queue(file_path)
         except Exception as e:
             messagebox.showerror("Błąd wczytania Hydry", str(e))
+            back_to_home()
             return
 
         # 2) start zlecenia
         params = ask_report_params_popup(root)
         
         if not params:
+            back_to_home()
             return
 
         linia_value = params["linia"]
@@ -754,12 +767,14 @@ def run_app():
                 "Najpierw wykonaj: Wczytaj maszyny → Przelicz produkcję.\n"
                 "Raport zapotrzebowania wymaga daty zakończenia grupy."
             )
+            back_to_home()
             return
 
         try:
             df_group = cut_from_order(df_hydra, start_order_id)
         except Exception as e:
             messagebox.showerror("Błąd startu grupy", str(e))
+            back_to_home()
             return
 
         df_plan = app_state.get("df")
@@ -914,11 +929,15 @@ def run_app():
             f"{i+1}. {gp} ({side})" for i, (gp, side) in enumerate(blocks)
         )
         
+        # schowaj tableview, pokaż text view z raportem
+        show_text_view()
+        hide_placeholder()
+        
         text.configure(state="normal")
         text.delete("1.0", "end")
         text.insert("end", report_text)
         text.configure(state="disabled")
-        _upadate_placeholder_visibility()        
+                
         
         # --- SAP -> mapy ilości ---
         sap_qty = {}
@@ -932,6 +951,7 @@ def run_app():
             df_sap = fetch_sap_basic_profiles(linia=linia_value, day=day_value)
         except Exception as e:
             messagebox.showerror("SAP/DB error", f"{type(e).__name__}: {e}")
+            back_to_home()
             return
 
         if df_sap is None or df_sap.empty:
@@ -978,7 +998,7 @@ def run_app():
 
 
         # iterujemy po blokach z Hydry w kolejności, próbując dobrać pozycje z SAP/DB dla każdego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
-        for gp, side in blocks:
+        for gp, _ in blocks:
             items = sap_rows_by_index.get(gp, [])
             items.sort(key=lambda it: float(it.get("qty", 0.0) or 0.0))
             if not items:
@@ -1079,7 +1099,8 @@ def run_app():
             text.configure(state="normal")
             text.delete("1.0", "end")
             text.configure(state="disabled")
-            _upadate_placeholder_visibility()
+            
+            
             return
 
         header = "RAPORT PODSTAW POD OKLEJANIE (SAP ułożony wg Hydry)\n"
@@ -1099,7 +1120,7 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", report_text)
         text.configure(state="disabled")
-        _upadate_placeholder_visibility()
+        
         
         app_state["last_report_text"] = report_text
         app_state["last_report_kind"] = "sap"
@@ -1299,10 +1320,42 @@ def run_app():
       
 
     # placeholder (nakładana etykieta wewnątrz Textboxa)
-    placeholder_text = HELP_PLACEHOLDER
-    placeholder_lbl = customtkinter.CTkLabel(text, text=placeholder_text, justify="center", text_color="#888888", font=default_font)
-    # umieść placeholder wewnątrz textboxa, wyśrodkowany
-    placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
+    
+    
+    placeholder_logo = ctk.CTkLabel(
+        text,
+        text=ASCII_LOGO,
+        justify="center",
+        anchor="center",
+        font=ctk.CTkFont(family="Courier New", size=10)  # monospace
+    )
+    placeholder_logo.place(relx=0.5, rely=0.42, anchor="center")
+
+    placeholder_title = ctk.CTkLabel(
+        text,
+        text=HOME_SUBTITLE,
+        font=ctk.CTkFont(size=18, weight="bold"),
+        justify="center"
+    )
+    placeholder_title.place(relx=0.5, rely=0.58, anchor="center")
+
+    placeholder_desc = ctk.CTkLabel(
+        text,
+        text=HOME_DESC,
+        text_color="#9aa0a6",
+        font=ctk.CTkFont(size=13),
+        justify="center"
+    )
+    placeholder_desc.place(relx=0.5, rely=0.63, anchor="center")
+
+    placeholder_ver = ctk.CTkLabel(
+        text,
+        text=HOME_VERSION,
+        text_color="#6f767d",
+        font=ctk.CTkFont(size=12),
+        justify="center"
+    )
+    placeholder_ver.place(relx=0.5, rely=0.69, anchor="center")
 
     # zmienna statusu i etykieta (wyświetlają liczbę wczytanych rekordów lub komunikaty)
     result_var = tk.StringVar(value="")
@@ -1361,16 +1414,27 @@ def run_app():
 
         title = "---- Przewidywane zakończenie produkcji --- \n\n"
         return title + "\n".join(out).rstrip() + "\n"    
+    
+    def show_placeholder():
+        placeholder_logo.place(relx=0.5, rely=0.42, anchor="center")
+        placeholder_title.place(relx=0.5, rely=0.58, anchor="center")
+        placeholder_desc.place(relx=0.5, rely=0.63, anchor="center")
+        placeholder_ver.place(relx=0.5, rely=0.69, anchor="center")
 
+    def hide_placeholder():
+        placeholder_logo.place_forget()
+        placeholder_title.place_forget()
+        placeholder_desc.place_forget()
+        placeholder_ver.place_forget()
 
-    # helper: aktualizuje widoczność placeholdera w textboxie
-    def _upadate_placeholder_visibility():
-        # sprawdź zawartość i pokaż/ukryj placeholder
-        content = text.get("1.0", "end-1c")
-        if content.strip():
-            placeholder_lbl.place_forget()
-        else:
-            placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
+    # # helper: aktualizuje widoczność placeholdera w textboxie
+    # def :
+    #     # sprawdź zawartość i pokaż/ukryj placeholder
+    #     content = text.get("1.0", "end-1c")
+    #     if content.strip():
+    #         placeholder_lbl.place_forget()
+    #     else:
+    #         placeholder_lbl.place(in_=text, relx=0.5, rely=0.5, anchor="center")
             
     # funkcja pokazująca popup wyboru maszyn
     def show_machine_select_popup(machines: list[str], on_confirm):
@@ -1683,6 +1747,7 @@ def run_app():
         choice = ask_schedule_popup(root) 
         
         if not choice:
+            back_to_home()
             return  # anulowano
 
         calendar_mode = choice.get("calendar", "workdays")
@@ -1731,7 +1796,7 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", report)
         text.configure(state="disabled")
-        _upadate_placeholder_visibility()
+        
 
         app_state["last_report_text"] = report
         app_state["last_report_kind"] = "db"
@@ -1856,6 +1921,7 @@ def run_app():
     
     # funkcja wyświetlania tylko tekstu w textboxie (ukrywa tabelę, jeśli była)
     def show_text_view():
+        # usuń tabelę, jeśli była
         tf = app_state.get("table_frame")
         if tf is not None:
             try:
@@ -1863,11 +1929,30 @@ def run_app():
             except Exception:
                 pass
         app_state["table_frame"] = None
+
+        # upewnij się że textbox jest widoczny
+        try:
+            text.grid(row=1, column=0, sticky="nsew")
+        except Exception:
+            pass
+
+        # ważne: placeholder OFF, bo zaraz ktoś będzie pisał w text
+        hide_placeholder()
+
         
         
     # funkcja wyświetlania DataFrame w tabeli Treeview
     def show_table_from_df(df: pd.DataFrame):
         # 1) schowaj textbox
+        hide_placeholder()
+
+        # schowaj textbox (żeby nie mieszał pod spodem)
+        try:
+            text.grid_remove()
+        except Exception:
+            pass        
+        
+        
         # usuń poprzednią, jeśli istnieje
         old_tf = app_state.get("table_frame")
         if old_tf is not None:
@@ -2318,6 +2403,7 @@ def run_app():
         df_plan = app_state.get("df")
         if df_plan is None or df_plan.empty:
             messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne.")
+            back_to_home()
             return
 
         # config
@@ -2328,6 +2414,7 @@ def run_app():
                 app_state["cfg"] = df_cfg
         except Exception as e:
             messagebox.showerror("Błąd wczytywania konfiguracji", str(e))
+            back_to_home()
             return
 
         df = df_plan.copy()
@@ -2340,17 +2427,20 @@ def run_app():
                 app_state["machine_cfg"] = df_mc
         except Exception as e:
             messagebox.showerror("Błąd wczytywania machine_config.csv", str(e))
+            back_to_home()
             return
 
         workplaces = df_plan["workplace"].dropna().astype("string").str.strip().unique()
         if len(workplaces) != 1:
             messagebox.showerror("Wybór maszyny", f"W danych wykryto wiele maszyn: {list(workplaces)}")
+            back_to_home()
             return
 
         workplace = workplaces[0]
         row = df_mc.loc[df_mc["workplace"] == workplace]
         if row.empty:
             messagebox.showerror("Brak konfiguracji", f"Nie znaleziono workplace='{workplace}' w machine_config.csv")
+            back_to_home()
             return
 
         default_speed = float(row.iloc[0]["speed_m_per_min"])
@@ -2361,6 +2451,7 @@ def run_app():
         choice = ask_calc_mode_popup(root, workplace, default_speed, default_pieces_per_shift)
 
         if choice is None:
+            back_to_home()
             return  # Anuluj           
 
         mask = df_mc["workplace"].astype("string").str.strip() == str(workplace).strip()
@@ -2403,6 +2494,7 @@ def run_app():
         missing_cols = [c for c in required if c not in df.columns]
         if missing_cols:
             messagebox.showerror("Błąd danych", f"Brak kolumn: {missing_cols}\nSprawdź on_open_file().")
+            back_to_home()
             return
 
         # normalizacja typów (na wszelki wypadek)
@@ -2413,6 +2505,7 @@ def run_app():
         for col in ("profile", "side", "setting_time"):
             if col not in df_cfg.columns:
                 messagebox.showerror("Błąd configu", f"Brak kolumny '{col}' w profile_config.csv")
+                back_to_home()
                 return
 
         # normalizacja configu (na wszelki wypadek)
@@ -2560,7 +2653,7 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", result_text)
         text.configure(state="disabled")
-        _upadate_placeholder_visibility()
+        
         
         show_text_view()
 
@@ -2607,6 +2700,7 @@ def run_app():
             ],
         )
         if not file_path:
+            back_to_home()
             return 
 
         try:
@@ -2660,18 +2754,6 @@ def run_app():
             # kolumna wykonania jest opcjonalna – jeśli ją znajdziemy, to ją dokładamy
             if good_p_col:
                 needed_fixed.insert(3, good_p_col)
-
-            # zlecenie_cols = [c for c in df_raw.columns if c.startswith("Zlecenie")]
-            # if len(zlecenie_cols) < 2:
-            #     raise ValueError("Brakuje drugiej kolumny 'Zlecenie' (tej ze stroną).")
-
-            # df = df_raw[needed_fixed + zlecenie_cols].copy()
-
-            # # wybierz tę kolumnę Zlecenie*, która jest stroną
-            # side_col = detect_side_column(df)
-
-            # # teraz zostaw tylko potrzebne kolumny + side_col
-            # df = df[needed_fixed + [side_col]].copy()
             
             zlecenie_cols = [c for c in df_raw.columns if c.startswith("Zlecenie")]
             if len(zlecenie_cols) < 2:
@@ -2786,7 +2868,7 @@ def run_app():
         confirm_button = customtkinter.CTkButton(
             popup,
             text="OK",
-            command=lambda: (show_table_from_df(df), popup.destroy())
+            command=lambda: (hide_placeholder(), show_table_from_df(df), popup.destroy())
         )
         confirm_button.pack(pady=(6, 12))
 
@@ -2797,19 +2879,8 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", df.head(50).to_string(index=False))
         text.configure(state="disabled")
-        _upadate_placeholder_visibility()
-        
-        try:
-            sample = df[["order_id", "profile_full", "target_value_p", "unit_p"]].head(10).to_string(index=False)
-        except Exception:
-            sample = df.head(10).to_string(index=False)
-
-        messagebox.showinfo(
-            "TEST normalizacji liczb",
-            "Pierwsze 10 wierszy po normalizacji:\n\n" + sample
-        )
                 
-
+    # funkcja obsługi przycisku "O programie" – pokazuje popup z informacjami o programie
     def show_about_popup(parent):
         popup = customtkinter.CTkToplevel(parent)
         popup.title("O programie")
@@ -2875,7 +2946,22 @@ def run_app():
         app_state["last_report_data"] = None
         app_state["last_report_text"] = ""
         _set_print_visible(False)
-        _upadate_placeholder_visibility()
+        back_to_home()
+
+    def back_to_home():
+        # usuń tabelę + pokaż textbox + schowaj placeholder
+        show_text_view()
+        # wyczyść prawy panel (textbox)
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.configure(state="disabled")
+
+        # schowaj przycisk drukowania, jak trzeba
+        _set_print_visible(False)
+
+        # pokaż ekran startowy
+        show_placeholder()
+        
 
 
 # 6) Przykładowe przyciski w lewym panelu
