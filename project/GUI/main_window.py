@@ -234,7 +234,7 @@ def run_app():
         return df.loc[:last_idx].reset_index(drop=True)
 
 
-
+    # podobna funkcja, ale obcina od zlecenia (włącznie) do końca
     def cut_from_order(df: pd.DataFrame, start_order_id: str) -> pd.DataFrame:
         start_norm = _normalize_order_id(start_order_id)
 
@@ -253,6 +253,7 @@ def run_app():
 
         return df.loc[hits[0]:].reset_index(drop=True)
     
+    # funkcja do popupu z pytaniem o numer zlecenia (z walidacją, musi być cyfrą)
     def ask_order_id_popup(parent) -> str | None:
         popup = ctk.CTkToplevel(parent)
         popup.title("Potwierdź termin zlecenia")
@@ -294,7 +295,7 @@ def run_app():
         popup.wait_window()
         return result["value"]
     
-
+    # główna funkcja do potwierdzenia terminu zlecenia: krok po kroku, z popupami
     def confirm_order_end_date():
         # 1) wybór pliku (jak w Przelicz produkcję)
         file_path = filedialog.askopenfilename(
@@ -531,12 +532,12 @@ def run_app():
         if choice["mode"] == "speed":
             speed = float(choice["speed_m_per_min"])
             total_run_min = total_m / speed if speed > 0 else 0.0
-            run_mode_line = f"Tryb biegu: {speed:.2f} m/min\n"
+            run_mode_line = f"Tryb przeliczania: {speed:.2f} m/min\n"
         else:
             pps = int(choice["pieces_per_shift"])
             shifts_needed = (total_pieces / pps) if pps > 0 else 0.0
             total_run_min = shifts_needed * 8.0 * 60.0
-            run_mode_line = f"Tryb biegu: {pps} szt./zmianę\n"
+            run_mode_line = f"Tryb przeliczania: {pps} szt./zmianę\n"
 
         total_min = total_setting_min + total_run_min
         shifts = (total_min / 60.0) / 8.0
@@ -564,6 +565,7 @@ def run_app():
             f"Zlecenie: {order_id}\n"
             f"--------------------------------\n"
             f"Zmiany (8h):  {shifts:.2f} → {rounded_shifts}\n"
+            f"{run_mode_line}"
             f"Start liczenia: {pl_weekday_name(start_d)} ({start_d.isoformat()}) zmiana {start_shift}\n"
             f"---------------------------------------------------------------------\n"
             f"Zlecenie zakończy się: {pl_weekday_name(end_d)} (zmiana {end_s}) ({end_d.strftime('%d.%m.%Y')})\n"
@@ -2570,7 +2572,7 @@ def run_app():
                 messagebox.showwarning("Błąd", "Prędkość musi być > 0.")
                 return
             total_run_min = total_m / speed
-            run_mode_line = f"Tryb biegu: {speed:.2f} m/min\n"
+            run_mode_line = f"Tryb przeliczania: {speed:.2f} m/min\n"
         else:
             pieces_per_shift = int(choice["pieces_per_shift"])
             if pieces_per_shift <= 0:
@@ -2582,7 +2584,7 @@ def run_app():
 
             shifts_needed = total_pieces / pieces_per_shift
             total_run_min = shifts_needed * 8.0 * 60.0
-            run_mode_line = f"Tryb biegu: {pieces_per_shift} szt./zmianę\n"
+            run_mode_line = f"Tryb przeliczania: {pieces_per_shift} szt./zmianę\n"
 
         # podsumowanie
         total_min = total_setting_min + total_run_min
