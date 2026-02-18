@@ -1,0 +1,89 @@
+[
+    {
+        "title": "Snapshot poranny  •  Najważniejsze",
+        "icon": "🟢",
+        "color": "#2ECC71",
+        "initially_open": false,
+        "body_lines": [
+            "Do czego służy:",
+            "• Zapisuje aktualny stan produkcji na dany dzień.",
+            "",
+            "Kiedy używać:",
+            "• Codziennie rano",
+            "• Przed generowaniem raportu",
+            "",
+            "⚠ Brak snapshotu = raport może zawierać nieaktualne dane."
+        ]
+    },
+    {
+        "title": "Wczytaj maszyny",
+        "icon": "🔵",
+        "color": "#3498DB",
+        "body_lines": [
+            "Do czego służy:",
+            "• Pobiera listę maszyn i dane z DB.",
+            "",
+            "Wskazówka:",
+            "• Jeśli nie ma dostępu do DB (ODBC/sieć), użyj trybu: Wczytaj plik (Excel)."
+        ]
+    },
+        {
+        "title": "Wczytaj plik (Excel)",
+        "icon": "🟣",
+        "color": "#9B59B6",
+        "body_lines": [
+            "Do czego służy:",
+            "• Wczytuje plan produkcji z Excela/CSV i pokazuje podgląd w tabeli.",
+            "",
+            "Wskazówka:",
+            "• Upewnij się, że plik ma kolumny Zlecenie + kolumnę strony (0020/0021/0022/0023)."
+        ]
+    },
+            {
+        "title": "Przelicz produkcję",
+        "icon": "🟡",
+        "color": "#F1C40F",
+        "body_lines": [
+            "Do czego służy:",
+            "• Liczy zmiany i przewidywaną datę zakończenia produkcji.",
+            "",
+            "Wymaga wcześniej:",
+            "• Wczytanych danych (DB albo plik)."
+        ]
+    },
+        {
+        "title": "Generuj raport",
+        "icon": "🟠",
+        "color": "#E67E22",
+        "body_lines": [
+            "Do czego służy:",
+            "• Tworzy raport zapotrzebowania (SAP ułożony wg Hydry).",
+            "",
+            "Wymaga:",
+            "• Przeliczonej produkcji (lub snapshot z dzisiejszego dnia)."
+        ]
+    },
+    {
+        "title": "Potwierdź termin zlecenia",
+        "icon": "🟤",
+        "color": "#C0392B",
+        "body_lines": [
+            "Do czego służy:",
+            "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
+            "",
+            "Wskazówka:",
+            "• Program obcina dane do zlecenia i liczy do tego miejsca."
+        ]
+    },
+    {
+        "title": "Wyczyść",
+        "icon": "⚪",
+        "color": "#95A5A6",
+        "body_lines": [
+            "Do czego służy:",
+            "• Czyści widok i wraca do ekranu startowego."
+        ]
+    }
+
+
+]
