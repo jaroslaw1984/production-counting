@@ -30,6 +30,9 @@ CONFING_PATH = BASE_DIR / "config" / "profile_config.csv"
 MACHINE_CONFIG_PATH = BASE_DIR / "config" / "machine_config.csv"
 SHIFTS_PER_DAY = 3
 
+# ścieżka do pliku z helpem
+HELP_SECTIONS_PATH = BASE_DIR / "data" / "help_sections.json"
+
 ORDER_ALIASES = [
     "zlecenie", "nr zlecenia", "zlecenie nr",
     "auftrag", "auftragsnr", "auftragsnummer",
@@ -3123,7 +3126,7 @@ def run_app():
                         opened_chev = None
                 else:
                     # klik na inną → otwórz i zamknij poprzednią
-                    open_()
+                    open_()                    
 
             for w in (header_row, title_lbl, chev):
                 w.bind("<Button-1>", lambda _e: toggle())
@@ -3132,99 +3135,27 @@ def run_app():
                 open_()
             else:
                 close()
+                
+            
 
-        # --- TREŚCI ---
-        add_help_section(
-            title="Snapshot poranny  •  Najważniejsze",
-            icon="🟢",
-            color="#2ECC71",
-            initially_open=False,
-            body_lines=[
-                "Do czego służy:",
-                "• Zapisuje aktualny stan produkcji na dany dzień.",
-                "",
-                "Kiedy używać:",
-                "• Codziennie rano",
-                "• Przed generowaniem raportu",
-                "",
-                "⚠ Brak snapshotu = raport może zawierać nieaktualne dane.",
-            ],
-        )
+        def load_help_sections(path: Path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                messagebox.showerror("Błąd help_sections.json", f"{type(e).__name__}: {e}\n\nPlik: {path}")
+                return []
 
-        add_help_section(
-            title="Wczytaj maszyny",
-            icon="🔵",
-            color="#3498DB",
-            body_lines=[
-                "Do czego służy:",
-                "• Pobiera listę maszyn i dane z DB.",
-                "",
-                "Wskazówka:",
-                "• Jeśli nie ma dostępu do DB (ODBC/sieć), użyj trybu: Wczytaj plik (Excel).",
-            ],
-        )
+        sections = load_help_sections(HELP_SECTIONS_PATH)
 
-        add_help_section(
-            title="Wczytaj plik",
-            icon="🟣",
-            color="#9B59B6",
-            body_lines=[
-                "Do czego służy:",
-                "• Wczytuje plan produkcji z Excela/CSV i pokazuje podgląd w tabeli.",
-                "",
-                "Wskazówka:",
-                "• Upewnij się, że plik ma kolumny Zlecenie + kolumnę strony (0020/0021/0022/0023).",
-            ],
-        )
-
-        add_help_section(
-            title="Przelicz produkcję",
-            icon="🟡",
-            color="#F4D03F",
-            body_lines=[
-                "Do czego służy:",
-                "• Liczy zmiany i przewidywaną datę zakończenia produkcji.",
-                "",
-                "Wymaga wcześniej:",
-                "• Wczytanych danych (DB albo plik).",
-            ],
-        )
-
-        add_help_section(
-            title="Generuj raport",
-            icon="🟠",
-            color="#E67E22",
-            body_lines=[
-                "Do czego służy:",
-                "• Tworzy raport zapotrzebowania (SAP ułożony wg Hydry).",
-                "",
-                "Wymaga:",
-                "• Przeliczonej produkcji (lub snapshot z dzisiejszego dnia).",
-            ],
-        )
-
-        add_help_section(
-            title="Potwierdź termin zlecenia",
-            icon="🟤",
-            color="#C0392B",
-            body_lines=[
-                "Do czego służy:",
-                "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
-                "",
-                "Wskazówka:",
-                "• Program obcina dane do zlecenia i liczy do tego miejsca.",
-            ],
-        )
-
-        add_help_section(
-            title="Wyczyść",
-            icon="⚪",
-            color="#95A5A6",
-            body_lines=[
-                "Do czego służy:",
-                "• Czyści widok i wraca do ekranu startowego.",
-            ],
-        )
+        for sec in sections:
+            add_help_section(
+                title=sec["title"],
+                icon=sec.get("icon", ""),
+                color=sec.get("color", "#3498DB"),
+                body_lines=sec.get("body_lines", []),
+                initially_open=sec.get("initially_open", False),
+            )
 
         # --- STOPKA ---
         footer = ctk.CTkFrame(win, fg_color="transparent")
