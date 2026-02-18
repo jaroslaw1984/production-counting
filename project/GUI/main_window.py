@@ -2865,6 +2865,385 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", df.head(50).to_string(index=False))
         text.configure(state="disabled")
+        
+
+    def open_help_window(parent):
+        # jeśli już otwarte – tylko przywróć
+        if app_state.get("help_win") is not None:
+            try:
+                if app_state["help_win"].winfo_exists():
+                    app_state["help_win"].lift()
+                    app_state["help_win"].focus_force()
+                    return
+            except Exception:
+                pass
+
+        win = ctk.CTkToplevel(parent)
+        win.title("Pomoc")
+        win.geometry("780x720")
+        win.minsize(680, 520)
+        win.configure(fg_color="#151515")
+
+        # nie blokujemy głównego okna (Twoje A), ale podbijamy na wierzch na start
+        try:
+            win.lift()
+            win.attributes("-topmost", True)
+            win.after(250, lambda: win.attributes("-topmost", False))
+        except Exception:
+            pass
+
+        # zapamiętaj referencję (żeby nie otwierać 10 okien)
+        app_state["help_win"] = win
+
+        def _on_close():
+            app_state["help_win"] = None
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", _on_close)
+
+        # --- HEADER ---
+        header = ctk.CTkFrame(win, fg_color="transparent")
+        header.pack(fill="x", padx=24, pady=(18, 8))
+
+        ctk.CTkLabel(
+            header,
+            text="Jak korzystać z aplikacji",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#ffffff",
+            anchor="w",
+        ).pack(fill="x")
+
+        ctk.CTkLabel(
+            header,
+            text="Kliknij sekcję nagłówka, aby rozwinąć opis.",
+            font=ctk.CTkFont(size=12),
+            text_color="#bdbdbd",
+            anchor="w",
+        ).pack(fill="x", pady=(6, 0))
+
+        ctk.CTkFrame(win, height=1, fg_color="#2a2a2a").pack(fill="x", padx=24, pady=(10, 14))
+
+        # --- SCROLL ---
+        scroll = ctk.CTkScrollableFrame(win, fg_color="transparent")
+        scroll.pack(fill="both", expand=True, padx=18, pady=0)
+
+        # single-open accordion (True = po otwarciu jednej, reszta się zamknie)
+        HEADER_H = 64  # ustaw pod siebie (56–72 zwykle idealnie)
+        SINGLE_OPEN = True
+        ANIM_MS = 110      # czas animacji (120–180 wygląda dobrze)
+        ANIM_STEPS = 2    # ilość kroków (8–14 ok)              
+        opened_content = None
+        opened_chev = None
+
+        def animate_height(widget, h_from, h_to, on_done=None):
+            # zabezpieczenie na klik spam
+            if getattr(widget, "_animating", False):
+                return
+            widget._animating = True
+
+            dh = (h_to - h_from) / ANIM_STEPS
+            i = 0
+
+            def step():
+                nonlocal i
+                i += 1
+                h = int(h_from + dh * i)
+
+                try:
+                    widget.configure(height=h)
+                except Exception:
+                    pass
+
+                if i < ANIM_STEPS:
+                    widget.after(max(1, ANIM_MS // ANIM_STEPS), step)
+                else:
+                    try:
+                        widget.configure(height=h_to)
+                    except Exception:
+                        pass
+                    widget._animating = False
+                    if on_done:
+                        on_done()
+
+            step()
+    
+        def add_help_section(*, title, icon, color, body_lines, initially_open=False):
+            card = ctk.CTkFrame(scroll, fg_color="#1f1f1f", corner_radius=14)
+            card.pack(fill="x", padx=6, pady=8)
+
+            card.pack_propagate(True)   # <-- KLUCZ: karta ma się kurczyć do zawartości
+
+            accent = ctk.CTkFrame(card, width=4, fg_color=color, corner_radius=10)
+            accent.pack(side="left", fill="y", padx=(0, 12), pady=8)
+
+            main = ctk.CTkFrame(card, fg_color="transparent")
+            main.pack(side="left", fill="both", expand=True, padx=(0, 12), pady=8)
+
+            main.pack_propagate(True)   # <-- też ważne
+
+
+            # HEADER (klikany)
+            header_row = ctk.CTkFrame(main, fg_color="transparent")
+            header_row.pack(fill="x")
+
+            title_lbl = ctk.CTkLabel(
+                header_row,
+                text=f"{icon}  {title}",
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=color,
+                anchor="w",
+            )
+            title_lbl.pack(side="left", fill="x", expand=True)
+
+            chev = ctk.CTkLabel(
+                header_row,
+                text="▼",
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color="#cfcfcf",
+                width=20,
+            )
+            chev.pack(side="right")
+
+            # CONTENT (zwijany)
+            content = ctk.CTkFrame(main, fg_color="transparent")
+            content.pack_propagate(True)
+
+
+            body_lbl = ctk.CTkLabel(
+                content,
+                text="\n".join(body_lines),
+                font=ctk.CTkFont(size=13),
+                text_color="#e6e6e6",
+                justify="left",
+                anchor="w",
+            )
+            body_lbl.pack(fill="x", pady=(10, 0))
+            
+            def calc_open_height():
+                # chwilowo pokaż content, żeby policzyć reqheight
+                content.pack(fill="x")
+                win.update_idletasks()
+
+                # ile potrzeba na treść
+                content_h = content.winfo_reqheight()
+
+                # odejmij/ dodaj oddechy – dopasuj pod swój gust
+                extra = 32  # paddingi karty + nagłówek itp.
+
+                return HEADER_H + content_h + extra
+            
+
+            def close():
+                # jeśli już zwinięte, nic nie rób
+                if content.winfo_manager() == "":
+                    try:
+                        card.configure(height=HEADER_H)
+                        card.pack_propagate(False)
+                        chev.configure(text="▼")
+                    except Exception:
+                        pass
+                    return
+
+                try:
+                    chev.configure(text="▼")
+                except Exception:
+                    pass
+
+                # animuj wysokość w dół
+                try:
+                    card.pack_propagate(False)
+                    h_now = card.winfo_height()
+                except Exception:
+                    h_now = HEADER_H
+
+                def after_close():
+                    try:
+                        content.pack_forget()
+                    except Exception:
+                        pass
+
+                animate_height(card, h_now, HEADER_H, on_done=after_close)
+
+
+
+            def open_():
+                nonlocal opened_content, opened_chev
+
+                # zamknij poprzednią (single-open)
+                if SINGLE_OPEN and opened_content is not None and opened_content is not content:
+                    try:
+                        prev_content = opened_content
+                        prev_card = prev_content.master.master  # content -> main -> card
+                        # strzałka poprzedniej
+                        if opened_chev is not None:
+                            opened_chev.configure(text="▼")
+                        # schowaj treść poprzedniej i zjedź wysokością
+                        prev_h = prev_card.winfo_height()
+                        def prev_done():
+                            try:
+                                prev_content.pack_forget()
+                            except Exception:
+                                pass
+                        prev_card.pack_propagate(False)
+                        animate_height(prev_card, prev_h, HEADER_H, on_done=prev_done)
+                    except Exception:
+                        pass
+
+                # pokaż content, policz target
+                try:
+                    card.pack_propagate(False)
+                    target_h = calc_open_height()
+                    h_now = card.winfo_height()
+                except Exception:
+                    target_h = HEADER_H + 120
+                    h_now = HEADER_H
+
+                try:
+                    chev.configure(text="▲")
+                except Exception:
+                    pass
+
+                # animuj w górę
+                animate_height(card, h_now, target_h)
+
+                opened_content = content
+                opened_chev = chev
+
+
+
+            def toggle():
+                nonlocal opened_content, opened_chev
+
+                is_visible = (content.winfo_manager() != "")
+                if is_visible:
+                    # klik na już otwartą → zamknij
+                    close()
+                    if opened_content is content:
+                        opened_content = None
+                        opened_chev = None
+                else:
+                    # klik na inną → otwórz i zamknij poprzednią
+                    open_()
+
+            for w in (header_row, title_lbl, chev):
+                w.bind("<Button-1>", lambda _e: toggle())
+
+            if initially_open:
+                open_()
+            else:
+                close()
+
+        # --- TREŚCI ---
+        add_help_section(
+            title="Snapshot poranny  •  Najważniejsze",
+            icon="🟢",
+            color="#2ECC71",
+            initially_open=False,
+            body_lines=[
+                "Do czego służy:",
+                "• Zapisuje aktualny stan produkcji na dany dzień.",
+                "",
+                "Kiedy używać:",
+                "• Codziennie rano",
+                "• Przed generowaniem raportu",
+                "",
+                "⚠ Brak snapshotu = raport może zawierać nieaktualne dane.",
+            ],
+        )
+
+        add_help_section(
+            title="Wczytaj maszyny",
+            icon="🔵",
+            color="#3498DB",
+            body_lines=[
+                "Do czego służy:",
+                "• Pobiera listę maszyn i dane z DB.",
+                "",
+                "Wskazówka:",
+                "• Jeśli nie ma dostępu do DB (ODBC/sieć), użyj trybu: Wczytaj plik (Excel).",
+            ],
+        )
+
+        add_help_section(
+            title="Wczytaj plik",
+            icon="🟣",
+            color="#9B59B6",
+            body_lines=[
+                "Do czego służy:",
+                "• Wczytuje plan produkcji z Excela/CSV i pokazuje podgląd w tabeli.",
+                "",
+                "Wskazówka:",
+                "• Upewnij się, że plik ma kolumny Zlecenie + kolumnę strony (0020/0021/0022/0023).",
+            ],
+        )
+
+        add_help_section(
+            title="Przelicz produkcję",
+            icon="🟡",
+            color="#F4D03F",
+            body_lines=[
+                "Do czego służy:",
+                "• Liczy zmiany i przewidywaną datę zakończenia produkcji.",
+                "",
+                "Wymaga wcześniej:",
+                "• Wczytanych danych (DB albo plik).",
+            ],
+        )
+
+        add_help_section(
+            title="Generuj raport",
+            icon="🟠",
+            color="#E67E22",
+            body_lines=[
+                "Do czego służy:",
+                "• Tworzy raport zapotrzebowania (SAP ułożony wg Hydry).",
+                "",
+                "Wymaga:",
+                "• Przeliczonej produkcji (lub snapshot z dzisiejszego dnia).",
+            ],
+        )
+
+        add_help_section(
+            title="Potwierdź termin zlecenia",
+            icon="🟤",
+            color="#C0392B",
+            body_lines=[
+                "Do czego służy:",
+                "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
+                "",
+                "Wskazówka:",
+                "• Program obcina dane do zlecenia i liczy do tego miejsca.",
+            ],
+        )
+
+        add_help_section(
+            title="Wyczyść",
+            icon="⚪",
+            color="#95A5A6",
+            body_lines=[
+                "Do czego służy:",
+                "• Czyści widok i wraca do ekranu startowego.",
+            ],
+        )
+
+        # --- STOPKA ---
+        footer = ctk.CTkFrame(win, fg_color="transparent")
+        footer.pack(fill="x", padx=24, pady=(10, 18))
+        ctk.CTkLabel(
+            footer,
+            text="Production Counter.",
+            font=ctk.CTkFont(size=11),
+            text_color="#8e8e8e",
+            justify="center",
+            anchor="w",
+        ).pack(fill="x")
+
+        # wycentruj okno względem głównego (masz już center_popup)
+        try:
+            center_popup(parent, win)
+        except Exception:
+            pass
+
                 
     # funkcja obsługi przycisku "O programie" – pokazuje popup z informacjami o programie
     def show_about_popup(parent):
@@ -2913,13 +3292,7 @@ def run_app():
             center_popup(parent, popup)
         except Exception:
             pass
-        
-    about_btn = customtkinter.CTkButton(
-    left,
-    text="O programie",
-    command=lambda: show_about_popup(root)
-    )
-    about_btn.grid(row=99, column=0, pady=(0, 10), sticky="ew")
+    
 
 
     # funkcja czyszczenia textboxa
@@ -2971,5 +3344,17 @@ def run_app():
     toogle_text = "Jasny motyw" if customtkinter.get_appearance_mode() == "Dark" else "Ciemny motyw"
     ch_theme = customtkinter.CTkButton(left, text=toogle_text, command=change)
     ch_theme.grid(row=6, column=0, pady=(20, 10), sticky="ew")
+    
+    # --- info/pomoc na dole (blisko siebie) ---
+    info_frame = ctk.CTkFrame(left, fg_color="transparent")
+    info_frame.grid(row=110, column=0, sticky="ew", pady=(0, 10))
+    info_frame.grid_columnconfigure(0, weight=1)
+
+    help_btn = ctk.CTkButton(info_frame, text="Pomoc", command=lambda: open_help_window(root))
+    help_btn.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+
+    about_btn = ctk.CTkButton(info_frame, text="O programie", command=lambda: show_about_popup(root))
+    about_btn.grid(row=1, column=0, sticky="ew")
+
 
     root.mainloop()
