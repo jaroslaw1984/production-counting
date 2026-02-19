@@ -8,6 +8,7 @@ import os
 import tempfile
 import re
 import json
+from PIL import Image
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Dict, Any
@@ -2894,6 +2895,15 @@ def run_app():
         win.title("Pomoc")
         win.geometry("780x720")
         win.minsize(680, 520)
+        # --- zawsze na wierzchu przy otwarciu ---
+        win.transient(parent)      # okno zależne od parent (Windows lubi to)
+        win.lift()                 # podnieś
+        win.focus_force()          # focus
+
+
+        # chwilowy topmost (pewniak na Windows)
+        win.attributes("-topmost", True)
+        win.after(250, lambda: win.attributes("-topmost", False))        
 
         # ✅ kolory zależne od motywu (Dark, Light)
         def _apply_help_theme():
@@ -3001,7 +3011,7 @@ def run_app():
 
             step()
     
-        def add_help_section(*, title, icon, color, body_lines, initially_open=False):
+        def add_help_section(*, title, icon, color, body, initially_open=False):
             card = ctk.CTkFrame(scroll, fg_color=("#ffffff", "#1f1f1f"), corner_radius=14)
             card.pack(fill="x", padx=6, pady=8)
 
@@ -3042,16 +3052,52 @@ def run_app():
             content = ctk.CTkFrame(main, fg_color="transparent")
             content.pack_propagate(True)
 
+            # ✅ trzymamy referencje do obrazów w jednym miejscu (bez img_lbl.image)
+            if not hasattr(content, "_images"):
+                content._images = []  # type: ignore[attr-defined]
 
-            body_lbl = ctk.CTkLabel(
-                content,
-                text="\n".join(body_lines),
-                font=ctk.CTkFont(size=13),
-                text_color=("#1a1a1a", color),
-                justify="left",
-                anchor="w",
-            )
-            body_lbl.pack(fill="x", pady=(10, 0))
+            def render_body(content, sec_body: list[dict]):
+                # wyczyść content, gdybyś kiedyś robił re-render
+                for ch in content.winfo_children():
+                    ch.destroy()
+                content._images.clear()  # type: ignore[attr-defined]
+
+                for block in sec_body:
+                    btype = block.get("type")
+
+                    if btype == "text":
+                        lines = block.get("content", [])
+                        if isinstance(lines, str):
+                            lines = [lines]
+
+                        lbl = ctk.CTkLabel(
+                            content,
+                            text="\n".join(lines),
+                            font=ctk.CTkFont(size=14),
+                            text_color=("#1f1f1f", "#e6e6e6"),
+                            justify="left",
+                            anchor="w",
+                        )
+                        lbl.pack(fill="x", pady=(8, 0), anchor="w")
+
+                    elif btype == "image":
+                        fname = block.get("file", "")
+                        img_path = BASE_DIR / "data" / "help_images" / fname
+
+                        if img_path.exists():
+                            img = Image.open(img_path)
+                            size = tuple(block.get("size", [300, 180]))
+                            ctk_img = ctk.CTkImage(img, size=size)
+
+                            img_lbl = ctk.CTkLabel(content, image=ctk_img, text="")
+                            img_lbl.pack(pady=(10, 0), anchor="w")
+
+                            # ✅ ważne: zachowaj referencję
+                            content._images.append(ctk_img)  # type: ignore[attr-defined]
+
+            # wypełnij content
+            render_body(content, body)
+
             
             def calc_open_height():
                 # chwilowo pokaż content, żeby policzyć reqheight
@@ -3184,7 +3230,7 @@ def run_app():
                 title=sec["title"],
                 icon=sec.get("icon", ""),
                 color=sec.get("color", "#3498DB"),
-                body_lines=sec.get("body_lines", []),
+                body=sec.get("body", []),
                 initially_open=sec.get("initially_open", False),
             )
 
