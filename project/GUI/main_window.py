@@ -1903,14 +1903,22 @@ def run_app():
     def change():
         if customtkinter.get_appearance_mode() == "Light":
             customtkinter.set_appearance_mode("Dark")
-            try:
-                ch_theme.configure(text="Jasny motyw")
-            except Exception:
-                pass
+            try: ch_theme.configure(text="Jasny motyw")
+            except Exception: pass
         else:
             customtkinter.set_appearance_mode("Light")
+            try: ch_theme.configure(text="Ciemny motyw")
+            except Exception: pass
+
+        # ✅ odśwież pomoc jeśli otwarta
+        hw = app_state.get("help_win")
+        if hw is not None:
             try:
-                ch_theme.configure(text="Ciemny motyw")
+                if hw.winfo_exists():
+                    # jeżeli wkleiłeś _apply_help_theme jako funkcję wewnątrz open_help_window,
+                    # to najprościej: zamknąć i otworzyć ponownie, ALBO przenieść _apply_help_theme na zewnątrz.
+                    hw.destroy()
+                    app_state["help_win"] = None
             except Exception:
                 pass
     
@@ -2881,21 +2889,43 @@ def run_app():
             except Exception:
                 pass
 
+        # ✅ ZAMIANA: CTkToplevel zamiast CTk()
         win = ctk.CTkToplevel(parent)
         win.title("Pomoc")
         win.geometry("780x720")
         win.minsize(680, 520)
-        win.configure(fg_color="#151515")
 
-        # nie blokujemy głównego okna (Twoje A), ale podbijamy na wierzch na start
-        try:
-            win.lift()
-            win.attributes("-topmost", True)
-            win.after(250, lambda: win.attributes("-topmost", False))
-        except Exception:
-            pass
+        # ✅ kolory zależne od motywu (Dark, Light)
+        def _apply_help_theme():
+            mode = ctk.get_appearance_mode()  # "Dark" / "Light"
+            if mode == "Light":
+                bg = "#f2f2f2"
+                sep = "#d6d6d6"
+                subtitle = "#555555"
+                textc = "#111111"
+                footer = "#666666"
+                chev = "#333333"
+            else:
+                bg = "#151515"
+                sep = "#2a2a2a"
+                subtitle = "#bdbdbd"
+                textc = "#ffffff"
+                footer = "#8e8e8e"
+                chev = "#cfcfcf"
 
-        # zapamiętaj referencję (żeby nie otwierać 10 okien)
+            win.configure(fg_color=bg)
+
+            # jeśli widgety już istnieją – odśwież je
+            try:
+                header_title.configure(text_color=textc)
+                header_sub.configure(text_color=subtitle)
+                separator.configure(fg_color=sep)
+                footer_lbl.configure(text_color=footer)
+                # strzałki w sekcjach (jeśli trzymasz referencje w liście) też możesz tu odświeżać
+            except Exception:
+                pass
+
+        # zapamiętaj referencję
         app_state["help_win"] = win
 
         def _on_close():
@@ -2908,23 +2938,24 @@ def run_app():
         header = ctk.CTkFrame(win, fg_color="transparent")
         header.pack(fill="x", padx=24, pady=(18, 8))
 
-        ctk.CTkLabel(
+        header_title = ctk.CTkLabel(
             header,
             text="Jak korzystać z aplikacji",
             font=ctk.CTkFont(size=20, weight="bold"),
-            text_color="#ffffff",
             anchor="w",
-        ).pack(fill="x")
+        )
+        header_title.pack(fill="x")
 
-        ctk.CTkLabel(
+        header_sub = ctk.CTkLabel(
             header,
             text="Kliknij sekcję nagłówka, aby rozwinąć opis.",
             font=ctk.CTkFont(size=12),
-            text_color="#bdbdbd",
             anchor="w",
-        ).pack(fill="x", pady=(6, 0))
+        )
+        header_sub.pack(fill="x", pady=(6, 0))
 
-        ctk.CTkFrame(win, height=1, fg_color="#2a2a2a").pack(fill="x", padx=24, pady=(10, 14))
+        separator = ctk.CTkFrame(win, height=1)
+        separator.pack(fill="x", padx=24, pady=(10, 14))
 
         # --- SCROLL ---
         scroll = ctk.CTkScrollableFrame(win, fg_color="transparent")
@@ -2971,7 +3002,7 @@ def run_app():
             step()
     
         def add_help_section(*, title, icon, color, body_lines, initially_open=False):
-            card = ctk.CTkFrame(scroll, fg_color="#1f1f1f", corner_radius=14)
+            card = ctk.CTkFrame(scroll, fg_color=("#ffffff", "#1f1f1f"), corner_radius=14)
             card.pack(fill="x", padx=6, pady=8)
 
             card.pack_propagate(True)   # <-- KLUCZ: karta ma się kurczyć do zawartości
@@ -3016,7 +3047,7 @@ def run_app():
                 content,
                 text="\n".join(body_lines),
                 font=ctk.CTkFont(size=13),
-                text_color="#e6e6e6",
+                text_color=("#1a1a1a", color),
                 justify="left",
                 anchor="w",
             )
@@ -3160,16 +3191,17 @@ def run_app():
         # --- STOPKA ---
         footer = ctk.CTkFrame(win, fg_color="transparent")
         footer.pack(fill="x", padx=24, pady=(10, 18))
-        ctk.CTkLabel(
+        footer_lbl = ctk.CTkLabel(
             footer,
             text="Production Counter.",
             font=ctk.CTkFont(size=11),
-            text_color="#8e8e8e",
             justify="center",
             anchor="w",
-        ).pack(fill="x")
+        )
+        footer_lbl.pack(fill="x")
 
-        # wycentruj okno względem głównego (masz już center_popup)
+        _apply_help_theme()
+
         try:
             center_popup(parent, win)
         except Exception:
