@@ -7,13 +7,15 @@
         "body": [{
             "type": "text",
             "content": [
-                "Do czego służy:",
-                "• Zapisujemy daty poszczególnych maszyn, kiedy grupy produkcyjne się zakończą na dany dzień.",
+                "Do czego służy?",
+                "",
+                "• Przelicza dane produkcji poszczególnych maszyn, i wylicza na kiedy grupy produkcyjne się zakończą na dany dzień, plus tworzy tzw. snapshot czyli zapisuje te daty na dany dzień, aby można było je później wykorzystać do generowania raportu zapotrzebowania.",
                 "  Jest to robione dla działu cięcia folii",
                 "",
-                "Jak to zorbić:",
-                "Przechodzimy do przycisku 'Wczytaj maszyny' w oknie 'Wybór maszyn', zaznaczamy 'Wybierz wszystkie' maszyny i zaznaczamy Snapshot czyli 'Zapisz terminy'.",
-                "Następnie klikamy 'Przelicz produkcję' aby zobaczyć przewidywane daty zakończenia produkcji dla grup produkcyjnych.", 
+                "Jak to zorbić?",
+                "",
+                "• Przechodzimy do przycisku 'Wczytaj maszyny' w oknie 'Wybór maszyn', zaznaczamy 'Wybierz wszystkie' maszyny i zaznaczamy Snapshot czyli 'Zapisz terminy'.",
+                "• Następnie klikamy 'Przelicz produkcję' aby zobaczyć przewidywane daty zakończenia produkcji dla grup produkcyjnych.", 
                 ""
                 ]       
                 },
@@ -26,17 +28,18 @@
                 "type": "text",
                 "content": [
                     "",
-                    "Kiedy używać:",
+                    "Kiedy używać?",
+                    "",
                     "• Codziennie rano",
                     "• Przed generowaniem raportu",
                     "",
                     "⚠ Brak snapshotu, progarm będzie liczył od aktualnej daty, co może dać błędną datę zakończenia produkcji, jeśli plan jest już w trakcie realizacji.",
                     "",
                     "Wskazówka:",
-                    "• Snapshot jest ważny tylko w dniu, w którym został zrobiony. Po kolejnym dniu, należy zrobić nowy snapshot, aby mieć aktualne termin zakończenia grupy produkcyjnej.",
                     "",
-                    "Snapsot może być nadpisany przez ponowne kliknięcie 'Zapisz terminy' w zakładce 'Wczytaj maszyny'.",
-                    "Program zapyta o potwierdzenie aby nadpisać istniejący snapshot, jeśli istnieje już snapshot z dzisiejszą datą."
+                    "• Snapshot jest ważny tylko w dniu, w którym został zrobiony. Po kolejnym dniu, należy zrobić nowy snapshot, aby mieć aktualne termin zakończenia grupy produkcyjnej.",
+                    "• Snapsot może być nadpisany przez ponowne kliknięcie 'Zapisz terminy' w zakładce 'Wczytaj maszyny'.",
+                    "• Program zapyta o potwierdzenie aby nadpisać istniejący snapshot, jeśli istnieje już snapshot z dzisiejszą datą."
 
                     ]
                 },
@@ -50,16 +53,67 @@
                 "content": [
                     "",
                     "⚠ Kolejny krok:",
+                    "",
                     "• Wybranie parametrów liczenia.",
                     " - W tym oknie można wybrać czy liczyć produkcję w dni robocze czy kalendarzowe, oraz czy uwzględniać soboty jako dni produkcyjne.",
                     "",
-                    "• Start do zmiany.",
+                    "• Start od zmiany.",
                     "- Tutaj można ustawić od której zmiany ma liczyć produkcję czyli od pierwszej, drugiej czy trzeciej. Domyślnie jest ustawiona pierwsza zmiana, co oznacza że program będzie liczył produkcję od początku dnia.",
                     "",
                     "• Start liczenia.",
                     "- Tutaj można ustawić od której daty program ma liczyć produkcję. Domyślnie jest ustawiona aktualna data, co oznacza że program będzie liczył produkcję od dzisiaj.", 
-                    "  Jeśli chcemy liczyć produkcję od innej daty, należy ją ustawić klikając 'od daty' i wpisać w kolejności rok-miesiąc-dzień.", 
-                    "  Jest to przydatne jeśli chcemy zobaczyć jak wyglądałby plan produkcji w przeszłości lub przyszłości.",
+                    "- Jeśli chcemy liczyć produkcję od innej daty, należy ją ustawić klikając 'od daty' i wpisać w kolejności rok-miesiąc-dzień.", 
+                    "- Jest to przydatne jeśli chcemy zobaczyć jak wyglądałby plan produkcji w przyszłości.",
+                    ""
+                    ]
+                },
+                {
+                "type": "image",
+                "file": "load_machine_2.jpg",
+                "size": [520, 420]
+                }            
+                ]
+    },
+    {
+        "title": "Wczytaj maszyny",
+        "icon": "🔵",
+        "color": "#3498DB",
+        "body": [{
+            "type": "text",
+            "content": [
+                "Do czego służy?",
+                "",
+                "• Przelicza dane produkcji poszczególnych maszyn, i wylicza na kiedy grupy produkcyjne się zakończą na dany dzień.",
+                "",
+                "Jak to zorbić?",
+                "",
+                "• W oknie 'Wybór maszyn' zaznaczamy pojedyńczą maszynę lub wszystkie na raz wybierając 'Wybierz wszystkie' i klikamy 'Przelicz produkcję' "
+                        ]
+                },
+                {
+                "type": "image",
+                "file": "load_machine_1.jpg",
+                "size": [520, 420]
+                },
+                {
+                "type": "text",
+                "content": [
+                    "",
+                    "⚠ Kolejny krok:",
+                    "",
+                    "• Wybranie parametrów liczenia.",
+                    "",
+                    " - W tym oknie można wybrać czy liczyć produkcję w dni robocze czy kalendarzowe, oraz czy uwzględniać soboty jako dni produkcyjne.",
+                    "",
+                    "• Start od zmiany.",
+                    "",
+                    "- Tutaj można ustawić od której zmiany ma liczyć produkcję czyli od pierwszej, drugiej czy trzeciej. Domyślnie jest ustawiona pierwsza zmiana, co oznacza że program będzie liczył produkcję od początku dnia.",
+                    "",
+                    "• Start liczenia.",
+                    "",
+                    "- Tutaj można ustawić od której daty program ma liczyć produkcję. Domyślnie jest ustawiona aktualna data, co oznacza że program będzie liczył produkcję od dzisiaj.", 
+                    "- Jeśli chcemy liczyć produkcję od innej daty, należy ją ustawić klikając 'od daty' i wpisać w kolejności rok-miesiąc-dzień.", 
+                    "- Jest to przydatne jeśli chcemy zobaczyć jak wyglądałby plan produkcji w przyszłości.",
                     ""
                     ]
                 },
@@ -79,93 +133,189 @@
                     ""
                 ]
                 },
-                                {
+                {
                 "type": "image",
                 "file": "load_machine_3.jpg",
+                "size": [520, 420]
+                },
+                {
+                "type": "text",
+                "content": [
+                    "",
+                    "⚠ Drukowanie raportu:",
+                    "",
+                    "Raport może być drukowany bezpośrednio z programu",
+                    ""
+                ]
+                },
+                {
+                "type": "image",
+                "file": "load_machine_4.jpg",
                 "size": [520, 420]
                 }            
                 ]
     },
     {
-        "title": "Wczytaj maszyny",
-        "icon": "🔵",
-        "color": "#3498DB",
-        "body": [{
-            "type": "text",
-            "content": [
-                "Do czego służy:",
-                "• Wczytuje daty poszczególnych maszyn, kiedy grupy produkcyjne się zakończą na dany dzień.",
-                "",
-                "Jak to zorbić:",
-                "W oknie 'Wybór maszyn' zaznaczamy pojedyńczą maszynę lub wszystkie na raz wybierając 'Wybierz wszystkie' i klikamy 'Przelicz produkcję' ",
-                "Program przeliczy daty zakończenia produkcji dla grup produkcyjnych na podstawie ilości zleceń na maszynie oraz ilości zbrojeń na podstawie ile dana maszyna może wykonać sztuk.",
-                ""
-                        ]
-                },
-                {
-                "type": "image",
-                "file": "load_machine_1.jpg",
-                "size": [520, 420]
-                }       
-        ]
-        },
-        {
         "title": "Wczytaj plik (Excel)",
         "icon": "🟣",
         "color": "#9B59B6",
-        "body": [
-            "Do czego służy:",
-            "• Wczytuje plan produkcji z Excela/CSV i pokazuje podgląd w tabeli.",
+        "body": [{
+            "type": "text",
+            "content": [
+            "Do czego służy?",
             "",
-            "Wskazówka:",
-            "• Upewnij się, że plik ma kolumny Zlecenie + kolumnę strony (0020/0021/0022/0023)."
+            "• Przelicza dane produkcji poszczególnych maszyn, i wylicza na kiedy grupy produkcyjne się zakończą na dany dzień, za pomocą wczytanego pliku Excel z Hydry.",
+            "",
+            "Jak to zorbić?",
+            "",
+            "• Zapisz plik wybranej maszyny przyciskając prawym przyciskiem myszy na tabeli z nazwą kolumny i zapisz jako Excel (.xls) z Hydry, który zawiera zlecenia.",
+            ""
+
+                        ]
+            },         
+            {
+            "type": "image",
+            "file": "load_from_file_1.jpg",
+            "size": [680, 420]
+            },
+            {
+            "type": "text",
+            "content": [                      
+                "",
+                "• Kliknij 'Wczytaj plik (Excel)' i wybierz przygotowany plik.",
+                "• Po wczytaniu pliku, program automatycznie wczyta zawartośc pliku Excel.",
+                "",
+                "⚠ Wskazówka:",
+                "",
+                "Jeśli plik wyrzuci błąd, upewnij się, że plik ma kolumny 'Zlecenie' + kolumnę strony (0020/0021/0022/0023).",
+                ""
+                        ]
+            },
+                {
+                "type": "image",
+                "file": "load_from_file_2.jpg",
+                "size": [520, 420]
+                },
+                {
+                "type": "image",
+                "file": "load_from_file_3.jpg",
+                "size": [520, 420]
+                },
+            {
+            "type": "text", 
+            "content": [
+                "",
+                "⚠ Kolejny krok:",
+                "",
+                "• Po wczytaniu pliku zobaczysz listę zleceń, następnie kliknij 'Przelicz produkcję' aby prześć do kolenego kroku w celu ustawienia parametrów liczenia.",
+                ""
+                ]
+            },
+            {
+                "type": "image",
+                "file": "load_from_file_4.jpg",
+                "size": [520, 420]
+            },
+                {
+                "type": "text",
+                "content": [
+                    "",
+                    "⚠ Kolejny krok:",
+                    "",
+                    "• Wybranie parametrów liczenia.",
+                    "",
+                    " - W tym oknie można wybrać czy liczyć produkcję w dni robocze czy kalendarzowe, oraz czy uwzględniać soboty jako dni produkcyjne.",
+                    "",
+                    "• Start od zmiany.",
+                    "",
+                    "- Tutaj można ustawić od której zmiany ma liczyć produkcję czyli od pierwszej, drugiej czy trzeciej. Domyślnie jest ustawiona pierwsza zmiana, co oznacza że program będzie liczył produkcję od początku dnia.",
+                    "",
+                    "• Start liczenia.",
+                    "",
+                    "- Tutaj można ustawić od której daty program ma liczyć produkcję. Domyślnie jest ustawiona aktualna data, co oznacza że program będzie liczył produkcję od dzisiaj.", 
+                    "- Jeśli chcemy liczyć produkcję od innej daty, należy ją ustawić klikając 'od daty' i wpisać w kolejności rok-miesiąc-dzień.", 
+                    "- Jest to przydatne jeśli chcemy zobaczyć jak wyglądałby plan produkcji w przyszłości.",
+                    ""
+                    ]
+                },
+            {
+                "type": "image",
+                "file": "load_from_file_5.jpg",
+                "size": [520, 420]
+            },
+            {
+            "type": "text", 
+            "content": [
+                "",
+                "⚠ W ostanim kroku:",
+                "",
+                "• Po zatwierdzeniu parametrów liczenia dostajemy raport o terminie zakończenia produkcji dla grup produkcyjnej wybranej maszyny",
+                ""
+                ]
+            },
+            {
+                "type": "image",
+                "file": "load_from_file_6.jpg",
+                "size": [520, 420]
+            }                                                                
         ]
     },
-            {
+{
         "title": "Przelicz produkcję",
         "icon": "🟡",
         "color": "#F1C40F",
-        "body": [
+        "body": [{
+            "type": "text",
+            "content": [
             "Do czego służy:",
             "• Liczy zmiany i przewidywaną datę zakończenia produkcji.",
             "",
             "Wymaga wcześniej:",
             "• Wczytanych danych (DB albo plik)."
-        ]
+            ]
+        }
+    ]
     },
-        {
+    {
         "title": "Generuj raport",
         "icon": "🟠",
         "color": "#E67E22",
-        "body": [
+        "body": [{
+            "type": "text",
+            "content": [
             "Do czego służy:",
             "• Tworzy raport zapotrzebowania (SAP ułożony wg Hydry).",
             "",
             "Wymaga:",
             "• Przeliczonej produkcji (lub snapshot z dzisiejszego dnia)."
-        ]
+                        ]
+        }]
     },
     {
         "title": "Potwierdź termin zlecenia",
         "icon": "🟤",
         "color": "#C0392B",
-        "body": [
+        "body": [{
+            "type": "text",
+            "content": [
             "Do czego służy:",
             "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
             "",
             "Wskazówka:",
             "• Program obcina dane do zlecenia i liczy do tego miejsca."
-        ]
+                        ]
+        }]
     },
     {
         "title": "Wyczyść",
         "icon": "⚪",
         "color": "#95A5A6",
-        "body": [
+        "body": [{
+            "type": "text",
+            "content": [
             "Do czego służy:",
             "• Czyści widok i wraca do ekranu startowego."
-        ]
-    }
-
-
+                    ]
+        }]      
+    }       
 ]
