@@ -3077,6 +3077,7 @@ def run_app():
                             text_color=("#1f1f1f", "#e6e6e6"),
                             justify="left",
                             anchor="w",
+                            wraplength=670,
                         )
                         lbl.pack(fill="x", pady=(8, 0), anchor="w")
 
