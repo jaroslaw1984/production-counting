@@ -280,7 +280,17 @@
                 "type": "image",
                 "file": "count_production_1.jpg",
                 "size": [520, 420]
-            }          
+            },
+            {
+            "type": "text", 
+            "content": [
+                "",
+                "Jeśli dane zostały poprawnie wczytane, po kliknięciu 'Przelicz produkcję' pojawi się okno z parametrami liczenia produkcji, gdzie można ustawić czy liczyć dni robocze czy kalendarzowe, od której zmiany liczyć produkcję oraz od której daty liczyć produkcję.",
+                "",
+                "• Po zatwierdzeniu parametrów liczenia dostajemy raport o terminie zakończenia produkcji dla grup produkcyjnej wybranej maszyny",
+                ""
+                ]
+            }                      
     ]
     },
     {
@@ -291,12 +301,98 @@
             "type": "text",
             "content": [
             "Do czego służy:",
-            "• Tworzy raport zapotrzebowania (SAP ułożony wg Hydry).",
             "",
-            "Wymaga:",
-            "• Przeliczonej produkcji (lub snapshot z dzisiejszego dnia)."
+            "• Tworzy raport zapotrzebowania dla działu logistyki z magazynu, ile metrów/sztuk będzie potrzebne do produkcji na dany dzień, na podstawie przeliczonej produkcji.",
+            "",
+            "⚠ Uwaga:",
+            "• Aby raport był poprawnie wygenerowany, należy wcześniej zapisać plik 'Excel' z danymi aktualnej produkcji z wybranej maszyny."
                         ]
-        }]
+        },
+        {
+            "type": "text",
+            "content": [
+            "",
+            "Jak to zorbić?",
+            "",
+            "• Zapisz plik wybranej maszyny przyciskając prawym przyciskiem myszy na tabeli z nazwą kolumny i zapisz jako Excel (.xls) z Hydry, który zawiera zlecenia.",
+            ""
+                        ]
+            },         
+            {
+            "type": "image",
+            "file": "load_from_file_1.jpg",
+            "size": [680, 420]
+            },
+        {
+            "type": "text",
+            "content": [
+            "",
+            "⚠ Uwaga:",
+            "",
+            "• Jeśli plik nie został poprawnie zapisany, nie będzie można wygenerować raportu.",
+            "",
+            "⚠ Kolejny krok:",
+            "",
+            "• Następnym krokiem pojawi się okno 'Parametry raportu'.",
+            "",
+            "• Tutaj wskazujemy dla której maszyny ma być wygenerowany raport, oraz wymagane jest wskazanie zlecenia startowego, czyli zlecenia od którego raport ma zacząć liczyć zapotrzebowanie."
+                        ]
+            },         
+            {
+            "type": "image",
+            "file": "report_generation_1.jpg",
+            "size": [520, 420]
+            },            
+        {
+            "type": "text",
+            "content": [
+            "",
+            "⚠ Wskazówka:",
+            "",
+            "• Raport może być wygenerowany z poprzednich dni wybierając przycisk 'z daty' a następnie wprowadzając odpowiednią datę (rok-miesiąc-dzień).",
+            "• Historia zapotrzebowania posiada bazę danych z dziesięciu ostatnich dni, więc można wygenerować raport z poprzednich dni, aby zobaczyć jak wyglądało zapotrzebowanie w przeszłości.",
+            ""           
+            ]
+            },         
+            {
+            "type": "image",
+            "file": "report_generation_2.jpg",
+            "size": [520, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+            "",
+            "⚠ Kolejny krok:",
+            "",
+            "• Po wyborze maszyny oraz wskazaniu zlecenia startowego, raport zostanie wygenerowany.",
+            "• Lista zapotrzebowania pokazuje ile metrów/sztuk będzie potrzebne do produkcji na dany dzień, na podstawie danych które zosatły wygenerowane w SAPie.",
+            "• Kolejność jest automatycznie sortowana na postawie pliku który został wczytany, a plik jest odwzorowany jak produkcja będzie przebiegać w rzeczywistości, więc jeśli zlecenia są realizowane w innej kolejności niż w pliku, raport będzie pokazywał zapotrzebowanie zgodnie z kolejnością zleceń w pliku.",
+            ""           
+            ]
+            },         
+            {
+            "type": "image",
+            "file": "report_generation_3.jpg",
+            "size": [520, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+            "",
+            "Drukowanie raportu lub edycja raportu:",
+            "",
+            "• Raport może być drukowany bezpośrednio z programu, klikając przycisk 'Drukuj raport'.",
+            "• Jeśli jest potrzeba edycji raportu, to wciśnięcie przycisku 'Edytuj raport' spowoduje otwarcie raportu w Wordzie, gdzie można go edytować lub zapisać.",
+            ""           
+            ]
+            },         
+            {
+            "type": "image",
+            "file": "report_generation_4.jpg",
+            "size": [520, 420]
+            }                  
+    ]
     },
     {
         "title": "Potwierdź termin zlecenia",
@@ -305,13 +401,84 @@
         "body": [{
             "type": "text",
             "content": [
-            "Do czego służy:",
+            "Do czego służy?",
+            "",
             "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
             "",
-            "Wskazówka:",
-            "• Program obcina dane do zlecenia i liczy do tego miejsca."
+            "Jak to zorbić?",
+            "",
+            "• Jesli chcemy sprawdzić przewidywany termin zakończenia dla konkretnego zlecenia, trzeba zapisać aktualny plan produkcyjny do pliku Excel z wybranej maszyny",
+            ""    
+         ]
+            },
+            {
+            "type": "image",
+            "file": "load_from_file_1.jpg",
+            "size": [680, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+            "",    
+            "⚠ Kolejny krok:",    
+            "",
+            "• Tutaj trzeba podać numer zlecenia, który chcemy sprawdzić, a następnie kliknąć 'OK'.",
+            "",
+            "⚠ Uwaga:",
+            ""
                         ]
-        }]
+            },
+            {
+            "type": "image",
+            "file": "deadline_1.jpg",
+            "size": [520, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+                "⚠ Uwaga:",
+                "",
+                "• Jeśli w pliku wskazanego zlecenia nie będzie, program poinformuje że zlecenie nie zostało znalezione.",
+                "",
+                "⚠ Kolejny krok:",
+                "",
+                "• Wybranie parametrów liczenia.",
+                "",
+                " - W tym oknie można wybrać czy liczyć produkcję w dni robocze czy kalendarzowe, oraz czy uwzględniać soboty jako dni produkcyjne.",
+                "",
+                "• Start od zmiany.",
+                "",
+                "- Tutaj można ustawić od której zmiany ma liczyć produkcję czyli od pierwszej, drugiej czy trzeciej. Domyślnie jest ustawiona pierwsza zmiana, co oznacza że program będzie liczył produkcję od początku dnia.",
+                "",
+                "• Start liczenia.",
+                "",
+                "- Tutaj można ustawić od której daty program ma liczyć produkcję. Domyślnie jest ustawiona aktualna data, co oznacza że program będzie liczył produkcję od dzisiaj.", 
+                "- Jeśli chcemy liczyć produkcję od innej daty, należy ją ustawić klikając 'od daty' i wpisać w kolejności rok-miesiąc-dzień.", 
+                "- Jest to przydatne jeśli chcemy zobaczyć jak wyglądałby plan produkcji w przyszłości.",
+                ""
+                ]
+            },
+            {
+            "type": "image",
+            "file": "deadline_2.jpg",
+            "size": [520, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+            "",
+            "⚠ Otrzymanie terminu zakończenia zlecenia:",
+            "",
+            "• Po zatwierdzeniu parametrów liczenia dostajemy raport o terminie zakończenia zlecenia, który jest obliczany na podstawie danych produkcyjnych z pliku Excel.",
+            ""           
+            ]
+            },         
+            {
+            "type": "image",
+            "file": "deadline_3.jpg",
+            "size": [520, 420]
+            }                                              
+                ]
     },
     {
         "title": "Wyczyść",
@@ -320,7 +487,8 @@
         "body": [{
             "type": "text",
             "content": [
-            "Do czego służy:",
+            "Do czego służy?",
+            "",
             "• Czyści widok i wraca do ekranu startowego."
                     ]
         }]      
