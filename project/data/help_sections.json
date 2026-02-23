@@ -268,12 +268,19 @@
             "type": "text",
             "content": [
             "Do czego służy:",
-            "• Liczy zmiany i przewidywaną datę zakończenia produkcji.",
             "",
-            "Wymaga wcześniej:",
-            "• Wczytanych danych (DB albo plik)."
+            "• Ta opcja służy do przeliczenia daty zakończenia produkcji dla przygotowanych danych produkcyjnych, które zostały wczytane za pomocą przycisku 'Wczytaj maszyny'",
+            "",
+            "⚠ Uwaga:",
+            "",
+            "• Wymagany jest wcześniej wczytanie danych za pomocą przycisku 'Wczytaj plik' inaczej nie będzie można przeliczyć produkcji i dodatkowo dostaniemy informację o błędzie."
             ]
-        }
+        },
+            {
+                "type": "image",
+                "file": "count_production_1.jpg",
+                "size": [520, 420]
+            }          
     ]
     },
     {
