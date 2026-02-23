@@ -2446,7 +2446,7 @@ def run_app():
     def calculate_production():
         df_plan = app_state.get("df")
         if df_plan is None or df_plan.empty:
-            messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne.")
+            messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne za pomocą przycisku 'Wczytaj plik', aby móc przeliczyć produkcję.")
             back_to_home()
             return
 
@@ -2457,7 +2457,7 @@ def run_app():
                 df_cfg = load_profile_confing()  # upewnij się, że nazwa funkcji jest poprawna
                 app_state["cfg"] = df_cfg
         except Exception as e:
-            messagebox.showerror("Błąd wczytywania konfiguracji", str(e))
+            messagebox.showerror("Błąd wczytywania konfiguracji. Proszę sprawdzić plik profile_config.csv", str(e))
             back_to_home()
             return
 
@@ -2470,7 +2470,7 @@ def run_app():
                 df_mc = load_machine_config()
                 app_state["machine_cfg"] = df_mc
         except Exception as e:
-            messagebox.showerror("Błąd wczytywania machine_config.csv", str(e))
+            messagebox.showerror("Błąd wczytywania konfiguracji. Proszę sprawdzić plikmachine_config.csv", str(e))
             back_to_home()
             return
 
