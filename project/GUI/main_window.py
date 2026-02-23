@@ -2967,7 +2967,18 @@ def run_app():
 
         # chwilowy topmost (pewniak na Windows)
         win.attributes("-topmost", True)
-        win.after(250, lambda: win.attributes("-topmost", False))        
+        win.after(250, lambda: win.attributes("-topmost", False)) 
+        
+        # wymuś odświeżenie scrollregion po dodaniu widgetów (ważne dla poprawnego działania przewijania)
+        def _refresh_scrollregion():
+            try:
+                win.update_idletasks()
+                scroll.update_idletasks()
+                canvas = getattr(scroll, "_parent_canvas", None) or getattr(scroll, "_canvas", None)
+                if canvas is not None:
+                    canvas.configure(scrollregion=canvas.bbox("all"))
+            except Exception:
+                pass               
 
         # ✅ kolory zależne od motywu (Dark, Light)
         def _apply_help_theme():
@@ -3038,8 +3049,8 @@ def run_app():
         # single-open accordion (True = po otwarciu jednej, reszta się zamknie)
         HEADER_H = 64  # ustaw pod siebie (56–72 zwykle idealnie)
         SINGLE_OPEN = True
-        ANIM_MS = 110      # czas animacji (120–180 wygląda dobrze)
-        ANIM_STEPS = 2    # ilość kroków (8–14 ok)              
+        ANIM_MS = 120      # czas animacji (120–180 wygląda dobrze)
+        ANIM_STEPS = 8    # ilość kroków (8–14 ok)              
         opened_content = None
         opened_chev = None
 
@@ -3059,6 +3070,7 @@ def run_app():
 
                 try:
                     widget.configure(height=h)
+                    _refresh_scrollregion()
                 except Exception:
                     pass
 
@@ -3067,6 +3079,7 @@ def run_app():
                 else:
                     try:
                         widget.configure(height=h_to)
+                        _refresh_scrollregion()
                     except Exception:
                         pass
                     widget._animating = False
@@ -3204,6 +3217,7 @@ def run_app():
                 def after_close():
                     try:
                         content.pack_forget()
+                        _refresh_scrollregion()
                     except Exception:
                         pass
 
@@ -3250,6 +3264,7 @@ def run_app():
 
                 # animuj w górę
                 animate_height(card, h_now, target_h)
+                win.after(1, _refresh_scrollregion)
 
                 opened_content = content
                 opened_chev = chev
