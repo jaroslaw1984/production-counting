@@ -1699,17 +1699,57 @@ def run_app():
                 on=["profile", "side"],
                 how="left",
             )
+            
+            missing = df_one[df_one["setting_time"].isna()]
+            if not missing.empty:
+                sample = missing[["profile", "side"]].drop_duplicates().head(15)
+                lines.append("⚠️ Brak setting_time w profile_config.csv dla (profile, side):")
+                lines.append(sample.to_string(index=False))
+                # i dopiero wtedy fillna(0) żeby program nie padł            
 
             df_one["setting_time"] = pd.to_numeric(df_one["setting_time"], errors="coerce").fillna(0).astype(int)
 
-            # zasada: dla strony 0020 nie liczymy zbrojeń
-            df_one.loc[df_one["side"] == "0020", "setting_time"] = 0
+            # # zasada: dla strony 0020 nie liczymy zbrojeń
+            # df_one.loc[df_one["side"] == "0020", "setting_time"] = 0
 
-            # liczymy unikalne zbrojenia (profile+side)
-            unique_setups = df_one[["profile", "side", "setting_time"]].drop_duplicates()
-            setup_count = int((unique_setups["setting_time"] > 0).sum())
-            setup_min = float(unique_setups["setting_time"].sum())
-            setup_shifts = setup_min / (8 * 60)  # 8h = 480 min
+            # # liczymy unikalne zbrojenia (profile+side)
+            # unique_setups = df_one[["profile", "side", "setting_time"]].drop_duplicates()
+            # setup_count = int((unique_setups["setting_time"] > 0).sum())
+            # setup_min = float(unique_setups["setting_time"].sum())
+            # setup_shifts = setup_min / (8 * 60)  # 8h = 480 min
+            
+            # --- ZBROJENIA: liczymy ZMIANY w kolejności (bloki), nie unikalne wartości ---
+            # ważne: DB czasem nie jest posortowane – sortuj po zleceniu (jeśli masz)
+            if "order_id" in df_one.columns:
+                # order_id bywa stringiem z zerami – normalizujemy do liczby pomocniczej
+                df_one["_order_num"] = (
+                    df_one["order_id"].astype("string").str.replace(r"\.0$", "", regex=True).str.lstrip("0")
+                )
+                df_one["_order_num"] = pd.to_numeric(df_one["_order_num"], errors="coerce")
+                df_one = df_one.sort_values(["_order_num"], kind="stable").drop(columns=["_order_num"])
+
+            # klucz zbrojenia – zwykle profil+strona; jeśli strona zawsze 0020, i tak zadziała
+            keys = list(zip(df_one["profile"].astype("string").str.strip(),
+                            df_one["side"].astype("string").str.strip().str.zfill(4)))
+
+            setup_count = 0
+            setup_min = 0.0
+
+            prev_key = None
+            for key, st in zip(keys, df_one["setting_time"].tolist()):
+                if prev_key is None:
+                    # start – zakładamy, że pierwsze ustawienie już jest na maszynie (nie liczymy jako zbrojenie)
+                    prev_key = key
+                    continue
+
+                if key != prev_key:
+                    st_val = float(st or 0)
+                    if st_val > 0:
+                        setup_count += 1
+                        setup_min += st_val
+                    prev_key = key
+
+            setup_shifts = setup_min / (8 * 60)            
 
             # --- ZMIANY: produkcja + zbrojenia ---
             prod_shifts = total_remaining / pps if total_remaining > 0 else 0.0
@@ -2517,6 +2557,9 @@ def run_app():
         df_cfg["profile"] = df_cfg["profile"].astype("string").str.strip()
         df_cfg["side"] = df_cfg["side"].astype("string").str.strip().str.zfill(4)
         df_cfg["setting_time"] = pd.to_numeric(df_cfg["setting_time"], errors="coerce")
+        
+        df["profile"] = df["profile"].astype("string").str.strip().str.split("-", n=1).str[0]
+        df_cfg["profile"] = df_cfg["profile"].astype("string").str.strip().str.split("-", n=1).str[0]        
 
         # merge
         df = df.merge(df_cfg[["profile", "side", "setting_time"]], on=["profile", "side"], how="left")
@@ -2534,7 +2577,7 @@ def run_app():
             return
 
         # Twoja reguła biznesowa (jeśli 0020 = brak zbrojenia)
-        df.loc[df["side"] == "0020", "setting_time"] = 0
+        # df.loc[df["side"] == "0020", "setting_time"] = 0
 
         # --- METRY (suma długości do biegu) ---
         if "target_value_p" not in df.columns or "unit_p" not in df.columns:
@@ -2564,10 +2607,31 @@ def run_app():
         total_pieces = float(pieces.sum())
 
 
-        # zbrojenia: unikalna konfiguracja profile+side
-        unique_setups = df[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
-        real_setups = unique_setups[unique_setups["setting_time"] > 0]
-        total_setting_min = float(real_setups["setting_time"].sum())
+        # # zbrojenia: unikalna konfiguracja profile+side
+        # unique_setups = df[["profile", "side", "setting_time"]].drop_duplicates(subset=["profile", "side"])
+        # real_setups = unique_setups[unique_setups["setting_time"] > 0]
+        # total_setting_min = float(real_setups["setting_time"].sum())
+        
+        # zbrojenia: liczymy przejścia (zmiany w kolejności), nie unikalne
+        keys = list(zip(
+            df["profile"].astype("string").str.strip(),
+            df["side"].astype("string").str.strip().str.zfill(4)
+        ))
+
+        setup_count = 0
+        total_setting_min = 0.0
+        prev_key = None
+
+        for key, st in zip(keys, df["setting_time"].tolist()):
+            if prev_key is None:
+                prev_key = key
+                continue
+            if key != prev_key:
+                st_val = float(st or 0)
+                if st_val > 0:
+                    setup_count += 1
+                    total_setting_min += st_val
+                prev_key = key        
 
         # --- CZAS BIEGU (wg trybu z popupu) ---
         total_run_min = 0.0
@@ -2632,7 +2696,7 @@ def run_app():
         result_text = (
             f"Stanowisko:   {workplace}\n"
             f"Pozycje w planie: {len(df)}\n"
-            f"Ilość zbrojeń profili: {len(real_setups)}\n"
+            f"Ilość zbrojeń profili: {setup_count}\n"
             f"Suma metrów:  {total_m:.1f} m\n"
             f"Suma sztuk:   {total_pieces:.0f} szt.\n"
             f"{run_mode_line}"
