@@ -3054,7 +3054,7 @@ def run_app():
         opened_content = None
         opened_chev = None
 
-        def animate_height(widget, h_from, h_to, on_done=None):
+        def animate_height(widget, h_from, h_to, on_done=None, *, lock_to: tk.Widget | None = None):
             # zabezpieczenie na klik spam
             if getattr(widget, "_animating", False):
                 return
@@ -3071,6 +3071,8 @@ def run_app():
                 try:
                     widget.configure(height=h)
                     _refresh_scrollregion()
+                    if lock_to is not None:
+                        _scroll_to_widget(lock_to, pad=12)  # trzyma nagłówek w miejscu
                 except Exception:
                     pass
 
@@ -3080,6 +3082,8 @@ def run_app():
                     try:
                         widget.configure(height=h_to)
                         _refresh_scrollregion()
+                        if lock_to is not None:
+                            _scroll_to_widget(lock_to, pad=12)
                     except Exception:
                         pass
                     widget._animating = False
@@ -3087,6 +3091,33 @@ def run_app():
                         on_done()
 
             step()
+            
+        def _scroll_to_widget(w: tk.Widget, *, pad: int = 10) -> None:
+            try:
+                win.update_idletasks()
+                scroll.update_idletasks()
+
+                canvas = getattr(scroll, "_parent_canvas", None) or getattr(scroll, "_canvas", None)
+                if canvas is None:
+                    return
+
+                _refresh_scrollregion()
+                win.update_idletasks()
+                scroll.update_idletasks()
+
+                bbox = canvas.bbox("all")
+                if not bbox:
+                    return
+
+                scroll_h = max(1, bbox[3] - bbox[1])
+
+                # ✅ stabilne: pozycja widgetu w jednostkach canvas
+                y = (w.winfo_rooty() - canvas.winfo_rooty()) + canvas.canvasy(0)
+                y = max(0, int(y) - pad)
+
+                canvas.yview_moveto(min(1.0, y / scroll_h))
+            except Exception:
+                pass 
     
         def add_help_section(*, title, icon, color, body, initially_open=False):
             card = ctk.CTkFrame(scroll, fg_color=("#ffffff", "#1f1f1f"), corner_radius=14)
@@ -3262,12 +3293,21 @@ def run_app():
                 except Exception:
                     pass
 
-                # animuj w górę
-                animate_height(card, h_now, target_h)
+                # najpierw ustaw scroll na początek sekcji
+                _scroll_to_widget(header_row, pad=12)
+
+                # animuj z "lockiem" do tej karty
+                animate_height(card, h_now, target_h, lock_to=header_row)
                 win.after(1, _refresh_scrollregion)
 
                 opened_content = content
                 opened_chev = chev
+
+                def _after_open_scroll():
+                    _refresh_scrollregion()
+                    _scroll_to_widget(header_row, pad=12)
+
+                win.after(ANIM_MS + 30, _after_open_scroll)
 
 
 
