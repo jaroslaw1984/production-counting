@@ -21,7 +21,16 @@ from project.config.workplace_config_provider import merge_db_and_csv_config
 from project.config.count_per_loader import update_count_by_shift
 from project.GUI.ui_texts import ASCII_LOGO, HOME_SUBTITLE, HOME_DESC, HOME_VERSION
 from collections import Counter, defaultdict
-
+from project.config.version import (
+    PROGRAM_NAME,
+    PROGRAM_VERSION,
+    PROGRAM_YEAR,
+    PROGRAM_AUTHOR,
+    DESCRIPTION,
+    COMPANY_MAIL,
+    PRIVATE_MAIL
+    
+)   
 
 
 
@@ -793,12 +802,9 @@ def run_app():
             use_smart_matching = True
 
 
-        blocks = build_blocks(df_group)
-        blocks_count = Counter(gp for gp, _side in blocks)
-        used_blocks = defaultdict(int)  # ile bloków danego indeksu już obsłużyliśmy    
-        
+        blocks = build_blocks(df_group)        
               
-
+        # 3) liczenie wymaganego metrażu do zrobienia dla kolejnych bloków (INDEKS + occurrence_index)
         def _calc_required_m_by_block_from_plan(df_cut_plan: pd.DataFrame) -> dict[tuple[str, int], float]:
             """
             Z planu liczymy metry do zrobienia dla kolejnych BLOKÓW jednego INDEKSU (bez side),
@@ -2967,7 +2973,7 @@ def run_app():
         text.insert("end", df.head(50).to_string(index=False))
         text.configure(state="disabled")
         
-
+    # funkcja otwierająca okno pomocy
     def open_help_window(parent):
         # jeśli już otwarte – tylko przywróć
         if app_state.get("help_win") is not None:
@@ -3079,6 +3085,7 @@ def run_app():
         opened_content = None
         opened_chev = None
 
+        # funkcja animacji rozwoju/zwijania sekcji (zmiana wysokości)
         def animate_height(widget, h_from, h_to, on_done=None, *, lock_to: tk.Widget | None = None):
             # zabezpieczenie na klik spam
             if getattr(widget, "_animating", False):
@@ -3116,7 +3123,8 @@ def run_app():
                         on_done()
 
             step()
-            
+        
+        # funkcja przewijania do widgetu (trzyma go w miejscu, nawet podczas animacji)    
         def _scroll_to_widget(w: tk.Widget, *, pad: int = 10) -> None:
             try:
                 win.update_idletasks()
@@ -3144,6 +3152,7 @@ def run_app():
             except Exception:
                 pass 
     
+        # funkcja dodająca sekcję pomocy (nagłówek + treść)        
         def add_help_section(*, title, icon, color, body, initially_open=False):
             card = ctk.CTkFrame(scroll, fg_color=("#ffffff", "#1f1f1f"), corner_radius=14)
             card.pack(fill="x", padx=6, pady=8)
@@ -3189,6 +3198,7 @@ def run_app():
             if not hasattr(content, "_images"):
                 content._images = []  # type: ignore[attr-defined]
 
+            # funkcja renderująca treść sekcji (możesz ją modyfikować pod swoje potrzeby, np. dodając obsługę nowych typów bloków)
             def render_body(content, sec_body: list[dict]):
                 # wyczyść content, gdybyś kiedyś robił re-render
                 for ch in content.winfo_children():
@@ -3232,7 +3242,7 @@ def run_app():
             # wypełnij content
             render_body(content, body)
 
-            
+            # funkcja licząca docelową wysokość karty po rozwinięciu (ważne dla animacji)
             def calc_open_height():
                 # chwilowo pokaż content, żeby policzyć reqheight
                 content.pack(fill="x")
@@ -3246,7 +3256,7 @@ def run_app():
 
                 return HEADER_H + content_h + extra
             
-
+            # funkcja zamykająca sekcję (zwijająca i chowająca content)
             def close():
                 # jeśli już zwinięte, nic nie rób
                 if content.winfo_manager() == "":
@@ -3270,6 +3280,7 @@ def run_app():
                 except Exception:
                     h_now = HEADER_H
 
+                # po animacji schowaj content i odśwież scrollregion
                 def after_close():
                     try:
                         content.pack_forget()
@@ -3279,8 +3290,7 @@ def run_app():
 
                 animate_height(card, h_now, HEADER_H, on_done=after_close)
 
-
-
+            # funkcja otwierająca sekcję (rozwijająca i pokazująca content, a jeśli SINGLE_OPEN=True, to też zamykająca poprzednią otwartą)
             def open_():
                 nonlocal opened_content, opened_chev
 
@@ -3335,7 +3345,7 @@ def run_app():
                 win.after(ANIM_MS + 30, _after_open_scroll)
 
 
-
+            # funkcja toggle (otwórz/zamknij) – wywoływana po kliknięciu w header
             def toggle():
                 nonlocal opened_content, opened_chev
 
@@ -3357,9 +3367,8 @@ def run_app():
                 open_()
             else:
                 close()
-                
-            
-
+                            
+        # funkcja ładująca sekcje pomocy z pliku JSON (możesz ją modyfikować, np. dodając cache, obsługę błędów itp.)
         def load_help_sections(path: Path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
@@ -3384,7 +3393,7 @@ def run_app():
         footer.pack(fill="x", padx=24, pady=(10, 18))
         footer_lbl = ctk.CTkLabel(
             footer,
-            text="Production Counter.",
+            text=f"Production Counter wersja programu {PROGRAM_VERSION} © {PROGRAM_YEAR} {PROGRAM_AUTHOR}",
             font=ctk.CTkFont(size=11),
             justify="center",
             anchor="w",
@@ -3406,18 +3415,6 @@ def run_app():
         popup.resizable(False, False)
         popup.grab_set()
         
-        # import danych o wersji programu z pliku version.py
-        from project.config.version import (
-            PROGRAM_NAME,
-            PROGRAM_VERSION,
-            PROGRAM_YEAR,
-            PROGRAM_AUTHOR,
-            DESCRIPTION,
-            COMPANY_MAIL,
-            PRIVATE_MAIL
-            
-        )        
-
         text = (
             f"{PROGRAM_NAME} \n\n"
             f"{DESCRIPTION}"
