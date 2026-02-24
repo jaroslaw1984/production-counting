@@ -849,6 +849,26 @@ def run_app():
 
             return out
 
+        def pick_item_without_required(items: list[dict], remaining_occurrences: int) -> dict:
+            """
+            Fallback kiedy nie mamy required_m:
+            dobieramy pozycję najbliższą średniej ilości na pozostały blok.
+            Przy remisie wybieramy większą (żeby nie zostawiać dużej na koniec).
+            """
+            if not items:
+                return {}
+
+            remaining_occurrences = max(int(remaining_occurrences), 1)
+            total_left = sum(float(it.get("qty", 0.0) or 0.0) for it in items)
+            avg = total_left / remaining_occurrences
+
+            def q(it): 
+                return float(it.get("qty", 0.0) or 0.0)
+
+            best = min(items, key=lambda it: (abs(q(it) - avg), -q(it)))
+            items.remove(best)
+            return best        
+
         def pick_items_best_fit(
             items: list[dict],
             required_m: float,
@@ -1001,7 +1021,8 @@ def run_app():
         rows = []
         lp = 1
         
-
+        total_blocks_by_gp = Counter(gp for gp, _ in blocks)
+        used_blocks_by_gp = defaultdict(int)
 
         # iterujemy po blokach z Hydry w kolejności, próbując dobrać pozycje z SAP/DB dla każdego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
         for gp, _ in blocks:
@@ -1013,6 +1034,7 @@ def run_app():
             # wystąpienie tego bloku w kolejności Hydry
             hydra_occ_by_index[gp] += 1
             occ_no = hydra_occ_by_index[gp]
+            used_blocks_by_gp[gp] += 1
 
             required_m = required_map.get((gp, occ_no))
             
@@ -1029,7 +1051,10 @@ def run_app():
             else:
                 # fallback bezpieczny: nie wiemy ile metrów potrzeba, więc NIE sumujemy kilku pozycji naraz,
                 # tylko bierzemy 1 najmniejszą, żeby rozrzucić je po blokach.
-                it = items.pop(0)
+                remaining_occ = total_blocks_by_gp[gp] - used_blocks_by_gp[gp]
+                it = pick_item_without_required(items, remaining_occ)
+                if it is None:
+                    continue
                 total_qty += float(it.get("qty", 0.0))
                 total_szt += int(it.get("szt", 0))
 
