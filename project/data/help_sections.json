@@ -492,27 +492,86 @@
         }]      
     },
      {
-        "title": "Jak modyfikować plik konfiguracyjny, aby dodać nową geometrię lub wprowadzić korektę.",
-        "icon": "🔴",
-        "color": "#E74C3C",
+        "title": "Jak modyfikować plik konfiguracyjny, aby dodać nową geometrię",
+        "icon": "🟣",
+        "color": "#FF00FF",
         "body": [{
             "type": "text",
             "content": [
-            "Do czego służy?",
+            "Gdzie szukać pliku konfiguracyjnego?",
             "",
-            "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
-            "",
-            "Jak to zrobić?",
-            "",
-            "• Jeśli chcemy sprawdzić przewidywany termin zakończenia dla konkretnego zlecenia, trzeba zapisać aktualny plan produkcyjny do pliku Excel z wybranej maszyny",
-            ""    
+            "• Przechodzimy do katalogu gdzie jest zainstalowany program (domyślnie Pulpit)",
+            "• Następnie wchodzimy do folderu o nazwie '_internal'",
+            ""  
          ]
             },
             {
             "type": "image",
-            "file": "load_from_file_1.jpg",
+            "file": "config_file_1.jpg",
             "size": [680, 420]
-            }
+            },
+            {
+            "type": "text",
+            "content": [
+            "",
+            "• Następnie w folderze '_internal' znajdumemy kolejno folder 'project' -> 'config'",
+            "",
+            "• Ścieżka: Desktop/Production Counter/_internal/project/config",
+            "",
+            "• W katalogu 'config' znajduje się plik o nazwie 'profile_config.csv', który jest plikiem konfiguracyjnym programu, gdzie można dodać nową geometrię lub wprowadzić korektę do istniejącej geometrii.",
+            ""           
+            ]
+            },         
+            {
+            "type": "image",
+            "file": "config_file_2.jpg",
+            "size": [680, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+            "",
+            "⚠ Uwaga:",
+            "",
+            "• Po otwarciu pliku 'profile_config.csv' w Excelu, zobaczymy informacje o konwersję danych w pliku.",
+            "",
+            "• Klikamy -- Nie konwertuj -- aby otworzyć plik bez zmiany formatowania danych.",
+            "",
+            "• Inaczej plik zostanie skonwertowany i program już nie będzie rozpoznawał geometrii, ponieważ formatowanie danych zostanie zmienione.",
+            ""
+            ]
+            },
+            {
+            "type": "image",
+            "file": "config_file_3.jpg",
+            "size": [680, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+            "",
+            "Jak wprowadzić nową geometrię do pliku konfiguracyjnego?",
+            "",
+            "• Plik posiada wymagane kolumny: 'profile' (nazwa geometrii), 'side' (strona), 'setting_time' (czas zbrojenia)",
+            "",
+            "• Przykład wprowadzenia nowej geometrii:",
+            ""
+            ]
+            },
+            {
+            "type": "image",
+            "file": "config_file_4.jpg",
+            "size": [320, 420]
+            },
+            {
+            "type": "text",
+            "content": [
+            "",
+            "Po wprowadzneiu zmian lub dodaniu nowej geometrii, należy zapisać plik 'profile_config.csv'",
+            "Używając skrótu Ctrl + S lub klikając 'Zapisz' w Excelu, aby zmiany zostały zapisane.",
+            ""
+            ]
+            }                                     
         ]
      }           
 ]
