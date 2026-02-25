@@ -12,7 +12,7 @@
                 "• Przelicza dane produkcji poszczególnych maszyn, i wylicza na kiedy grupy produkcyjne się zakończą na dany dzień, plus tworzy tzw. snapshot czyli zapisuje te daty na dany dzień, aby można było je później wykorzystać do generowania raportu zapotrzebowania.",
                 "  Jest to robione dla działu cięcia folii",
                 "",
-                "Jak to zorbić?",
+                "Jak to zrobić?",
                 "",
                 "• Przechodzimy do przycisku 'Wczytaj maszyny' w oknie 'Wybór maszyn', zaznaczamy 'Wybierz wszystkie' maszyny i zaznaczamy Snapshot czyli 'Zapisz terminy'.",
                 "• Następnie klikamy 'Przelicz produkcję' aby zobaczyć przewidywane daty zakończenia produkcji dla grup produkcyjnych.", 
@@ -33,12 +33,12 @@
                     "• Codziennie rano",
                     "• Przed generowaniem raportu",
                     "",
-                    "⚠ Brak snapshotu, progarm będzie liczył od aktualnej daty, co może dać błędną datę zakończenia produkcji, jeśli plan jest już w trakcie realizacji.",
+                    "⚠ Brak snapshotu, program będzie liczył od aktualnej daty, co może dać błędną datę zakończenia produkcji, jeśli plan jest już w trakcie realizacji.",
                     "",
                     "Wskazówka:",
                     "",
                     "• Snapshot jest ważny tylko w dniu, w którym został zrobiony. Po kolejnym dniu, należy zrobić nowy snapshot, aby mieć aktualne termin zakończenia grupy produkcyjnej.",
-                    "• Snapsot może być nadpisany przez ponowne kliknięcie 'Zapisz terminy' w zakładce 'Wczytaj maszyny'.",
+                    "• Snapshot może być nadpisany przez ponowne kliknięcie 'Zapisz terminy' w zakładce 'Wczytaj maszyny'.",
                     "• Program zapyta o potwierdzenie aby nadpisać istniejący snapshot, jeśli istnieje już snapshot z dzisiejszą datą."
 
                     ]
@@ -85,9 +85,9 @@
                 "",
                 "• Przelicza dane produkcji poszczególnych maszyn, i wylicza na kiedy grupy produkcyjne się zakończą na dany dzień.",
                 "",
-                "Jak to zorbić?",
+                "Jak to zrobić?",
                 "",
-                "• W oknie 'Wybór maszyn' zaznaczamy pojedyńczą maszynę lub wszystkie na raz wybierając 'Wybierz wszystkie' i klikamy 'Przelicz produkcję' "
+                "• W oknie 'Wybór maszyn' zaznaczamy pojedynczą maszynę lub wszystkie na raz wybierając 'Wybierz wszystkie' i klikamy 'Przelicz produkcję' "
                         ]
                 },
                 {
@@ -166,9 +166,9 @@
             "",
             "• Przelicza dane produkcji poszczególnych maszyn, i wylicza na kiedy grupy produkcyjne się zakończą na dany dzień, za pomocą wczytanego pliku Excel z Hydry.",
             "",
-            "Jak to zorbić?",
+            "Jak to zrobić?",
             "",
-            "• Zapisz plik wybranej maszyny przyciskając prawym przyciskiem myszy na tabeli z nazwą kolumny i zapisz jako Excel (.xls) z Hydry, który zawiera zlecenia.",
+            "• Zapisz plik wybranej maszyny klikając prawym przyciskiem myszy na tabeli z nazwą kolumny i zapisz jako Excel (.xls) z Hydry, który zawiera zlecenia.",
             ""
 
                         ]
@@ -183,7 +183,7 @@
             "content": [                      
                 "",
                 "• Kliknij 'Wczytaj plik (Excel)' i wybierz przygotowany plik.",
-                "• Po wczytaniu pliku, program automatycznie wczyta zawartośc pliku Excel.",
+                "• Po wczytaniu pliku, program automatycznie wczyta zawartość pliku Excel.",
                 "",
                 "⚠ Wskazówka:",
                 "",
@@ -207,7 +207,7 @@
                 "",
                 "⚠ Kolejny krok:",
                 "",
-                "• Po wczytaniu pliku zobaczysz listę zleceń, następnie kliknij 'Przelicz produkcję' aby prześć do kolenego kroku w celu ustawienia parametrów liczenia.",
+                "• Po wczytaniu pliku zobaczysz listę zleceń, następnie kliknij 'Przelicz produkcję' aby przejść do kolejnego kroku w celu ustawienia parametrów liczenia.",
                 ""
                 ]
             },
@@ -247,9 +247,9 @@
             "type": "text", 
             "content": [
                 "",
-                "⚠ W ostanim kroku:",
+                "⚠ W ostatnim kroku:",
                 "",
-                "• Po zatwierdzeniu parametrów liczenia dostajemy raport o terminie zakończenia produkcji dla grup produkcyjnej wybranej maszyny",
+                "• Po zatwierdzeniu parametrów liczenia dostajemy raport o terminie zakończenia produkcji dla grupy produkcyjnej wybranej maszyny",
                 ""
                 ]
             },
@@ -273,7 +273,7 @@
             "",
             "⚠ Uwaga:",
             "",
-            "• Wymagany jest wcześniej wczytanie danych za pomocą przycisku 'Wczytaj plik' inaczej nie będzie można przeliczyć produkcji i dodatkowo dostaniemy informację o błędzie."
+            "• Wymagane jest wcześniejsze wczytanie danych za pomocą przycisku 'Wczytaj plik' inaczej nie będzie można przeliczyć produkcji i dodatkowo dostaniemy informację o błędzie."
             ]
         },
             {
@@ -287,7 +287,7 @@
                 "",
                 "Jeśli dane zostały poprawnie wczytane, po kliknięciu 'Przelicz produkcję' pojawi się okno z parametrami liczenia produkcji, gdzie można ustawić czy liczyć dni robocze czy kalendarzowe, od której zmiany liczyć produkcję oraz od której daty liczyć produkcję.",
                 "",
-                "• Po zatwierdzeniu parametrów liczenia dostajemy raport o terminie zakończenia produkcji dla grup produkcyjnej wybranej maszyny",
+                "• Po zatwierdzeniu parametrów liczenia dostajemy raport o terminie zakończenia produkcji dla grupy produkcyjnej wybranej maszyny",
                 ""
                 ]
             }                      
@@ -312,9 +312,9 @@
             "type": "text",
             "content": [
             "",
-            "Jak to zorbić?",
+            "Jak to zrobić?",
             "",
-            "• Zapisz plik wybranej maszyny przyciskając prawym przyciskiem myszy na tabeli z nazwą kolumny i zapisz jako Excel (.xls) z Hydry, który zawiera zlecenia.",
+            "• Zapisz plik wybranej maszyny klikając prawym przyciskiem myszy na tabeli z nazwą kolumny i zapisz jako Excel (.xls) z Hydry, który zawiera zlecenia.",
             ""
                         ]
             },         
@@ -366,8 +366,8 @@
             "⚠ Kolejny krok:",
             "",
             "• Po wyborze maszyny oraz wskazaniu zlecenia startowego, raport zostanie wygenerowany.",
-            "• Lista zapotrzebowania pokazuje ile metrów/sztuk będzie potrzebne do produkcji na dany dzień, na podstawie danych które zosatły wygenerowane w SAPie.",
-            "• Kolejność jest automatycznie sortowana na postawie pliku który został wczytany, a plik jest odwzorowany jak produkcja będzie przebiegać w rzeczywistości, więc jeśli zlecenia są realizowane w innej kolejności niż w pliku, raport będzie pokazywał zapotrzebowanie zgodnie z kolejnością zleceń w pliku.",
+            "• Lista zapotrzebowania pokazuje ile metrów/sztuk będzie potrzebne do produkcji na dany dzień, na podstawie danych które zostały wygenerowane w SAPie.",
+            "• Kolejność jest automatycznie sortowana na podstawie pliku który został wczytany, a plik jest odwzorowany jak produkcja będzie przebiegać w rzeczywistości, więc jeśli zlecenia są realizowane w innej kolejności niż w pliku, raport będzie pokazywał zapotrzebowanie zgodnie z kolejnością zleceń w pliku.",
             ""           
             ]
             },         
@@ -405,9 +405,9 @@
             "",
             "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
             "",
-            "Jak to zorbić?",
+            "Jak to zrobić?",
             "",
-            "• Jesli chcemy sprawdzić przewidywany termin zakończenia dla konkretnego zlecenia, trzeba zapisać aktualny plan produkcyjny do pliku Excel z wybranej maszyny",
+            "• Jeśli chcemy sprawdzić przewidywany termin zakończenia dla konkretnego zlecenia, trzeba zapisać aktualny plan produkcyjny do pliku Excel z wybranej maszyny",
             ""    
          ]
             },
@@ -436,7 +436,7 @@
             "content": [
                 "⚠ Uwaga:",
                 "",
-                "• Jeśli w pliku wskazanego zlecenia nie będzie, program poinformuje że zlecenie nie zostało znalezione.",
+                "• Jeśli w pliku wskazanego zlecenia go nie będzie, program poinformuje, że zlecenie nie zostało znalezione.",
                 "",
                 "⚠ Kolejny krok:",
                 "",
@@ -475,7 +475,7 @@
             "type": "image",
             "file": "deadline_3.jpg",
             "size": [520, 420]
-            }                                              
+            }                                               
                 ]
     },
     {
@@ -490,5 +490,29 @@
             "• Czyści widok i wraca do ekranu startowego."
                     ]
         }]      
-    }       
+    },
+     {
+        "title": "Jak modyfikować plik konfiguracyjny, aby dodać nową geometrię lub wprowadzić korektę.",
+        "icon": "🔴",
+        "color": "#E74C3C",
+        "body": [{
+            "type": "text",
+            "content": [
+            "Do czego służy?",
+            "",
+            "• Sprawdza przewidywany termin zakończenia dla wskazanego zlecenia.",
+            "",
+            "Jak to zrobić?",
+            "",
+            "• Jeśli chcemy sprawdzić przewidywany termin zakończenia dla konkretnego zlecenia, trzeba zapisać aktualny plan produkcyjny do pliku Excel z wybranej maszyny",
+            ""    
+         ]
+            },
+            {
+            "type": "image",
+            "file": "load_from_file_1.jpg",
+            "size": [680, 420]
+            }
+        ]
+     }           
 ]
