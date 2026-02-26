@@ -201,19 +201,22 @@ def run_app():
         gp_col = find_column(df, GRUNDPROFIL_ALIASES)
         side_col = detect_side_column(df)
 
-        out = df[[order_col, gp_col, side_col]].copy()
-        out = out.rename(columns={order_col: "order_id", gp_col: "grundprofil", side_col: "side"})
+        # NOWE: kolumna Artykuł (aliasy)
+        ARTICLE_ALIASES = ["artykuł", "artykul", "artikel", "article", "item", "material", "indeks"]
+        article_col = find_column(df, ARTICLE_ALIASES)
+
+        out = df[[order_col, article_col, gp_col, side_col]].copy()
+        out = out.rename(columns={
+            order_col: "order_id",
+            article_col: "article",
+            gp_col: "grundprofil",
+            side_col: "side",
+        })
         out["order_id"] = out["order_id"].astype("string").str.strip()
+        out["article"] = out["article"].astype("string").str.strip()
         out["grundprofil"] = out["grundprofil"].astype("string").str.strip()
-        out = out[(out["order_id"] != "") & (out["grundprofil"] != "")]
-        out["side"] = (
-            out["side"]
-            .astype("string")
-            .str.strip()
-            .str.replace(r"\.0$", "", regex=True)
-            .str.zfill(4)
-            )
-        out = out[(out["order_id"] != "") & (out["grundprofil"] != "") & (out["side"] != "")]
+
+        out = out[(out["order_id"] != "") & (out["article"] != "") & (out["grundprofil"] != "")]
         
         return out.reset_index(drop=True)
      
@@ -792,6 +795,49 @@ def run_app():
             back_to_home()
             return
 
+        ONLY_0021_PATTERNS = [
+            r"-[123]00",          # -100..., -200..., -300...  => tylko 0021
+        ]
+
+        # funkcja do walidacji kompletności stron dla artykułów (tylko 0021/0022, tylko brak 0022 gdy jest 0021)        
+        def _validate_double_sided_orders(df: pd.DataFrame) -> list[str]:
+            """
+            Sprawdza TYLKO: jeśli artykuł ma stronę 0021, to czy ma też 0022.
+            Nie zgłasza braków 0021 (bo to nie jest błąd w Twoim procesie).
+            Zwraca listę artykułów, gdzie brakuje 0022.
+            """
+            if df is None or df.empty or "article" not in df.columns:
+                return []
+
+            tmp = df.copy()
+            tmp["article"] = tmp["article"].astype("string").str.strip()
+            tmp["side"] = (
+                tmp["side"].astype("string").str.strip()
+                .str.replace(r"\.0$", "", regex=True)
+                .str.zfill(4)
+            )
+
+            # tylko interesują nas 0021/0022
+            tmp = tmp[tmp["side"].isin({"0021", "0022"})].copy()
+            if tmp.empty:
+                return []
+
+            sides_by_article = tmp.groupby("article")["side"].apply(lambda s: set(s.tolist()))
+
+            missing_0022_articles: list[str] = []
+            for article, sides in sides_by_article.items():
+                a = str(article)
+
+                # IGNORUJ artykuły, które z definicji nie mają 0022 (np. -100/-200/-300...)
+                if any(re.search(pat, a) for pat in ONLY_0021_PATTERNS):
+                    continue
+
+                # LOGIKA: jeżeli jest 0021, a nie ma 0022 => błąd
+                if "0021" in sides and "0022" not in sides:
+                    missing_0022_articles.append(a)
+
+            return missing_0022_articles
+
         df_plan = app_state.get("df")
 
         df_plan_df: pd.DataFrame | None = None
@@ -1158,10 +1204,24 @@ def run_app():
         text.delete("1.0", "end")
         text.insert("end", report_text)
         text.configure(state="disabled")
-        
-        
+            
         app_state["last_report_text"] = report_text
         app_state["last_report_kind"] = "sap"
+        
+        # Informacja o brakach stron 0022 dla artykułów z 0021
+        missing_articles = _validate_double_sided_orders(df_group)
+        if missing_articles:
+            preview = "\n".join([f"• {a}: brakuje strony 0022" for a in missing_articles[:12]])
+            if len(missing_articles) > 12:
+                preview += f"\n… i jeszcze {len(missing_articles) - 12} kolejnych."
+
+            first_article = missing_articles[0]
+
+            messagebox.showwarning(
+                "Uwaga: braki strony 0022",
+                f"Wykryto konflikt: na artykule {first_article} brakuje strony wewnętrznej 0022.\n\n"
+                f"Szczegóły:\n{preview}"
+            )
 
 
         # Dane strukturalne pod DOCX (layout jak w Wordzie)
