@@ -1141,7 +1141,7 @@ def run_app():
             
             return
 
-        header = "RAPORT PODSTAW POD OKLEJANIE (SAP ułożony wg Hydry)\n"
+        header = "RAPORT DOTYCZĄCY ZAPOTRZEBOWANIA POD OKLEJANIE:\n"
         meta = []
         if sap_date: meta.append(f"Data: {sap_date}")
         if sap_user: meta.append(f"Użytkownik: {sap_user}")
