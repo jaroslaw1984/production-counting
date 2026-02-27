@@ -709,18 +709,46 @@ def run_app():
             return ""
         return f"Maszyna {int(m.group(1))}"
         
-    def build_blocks(df: pd.DataFrame) -> list[tuple[str, str]]:
-        gp_seq = df["grundprofil"].astype("string").str.strip().tolist()
-        side_seq = df["side"].astype("string").str.strip().str.zfill(4).tolist()
+    def build_blocks(df: pd.DataFrame) -> list[dict]:
+        # Każdy blok: ciąg (grundprofil, side) + order_id z Hydry
+        tmp = df.copy()
+        tmp["grundprofil"] = tmp["grundprofil"].astype("string").str.strip()
+        tmp["side"] = tmp["side"].astype("string").str.strip().str.zfill(4)
+        tmp["order_id"] = tmp["order_id"].astype("string").str.strip()
 
-        blocks: list[tuple[str, str]] = []
+        blocks: list[dict] = []
         prev = None
-        for gp, side in zip(gp_seq, side_seq):
-            key = (gp, side)
+        start = 0
+
+        keys = list(zip(tmp["grundprofil"].tolist(), tmp["side"].tolist()))
+
+        for i, key in enumerate(keys):
             if key != prev:
-                blocks.append(key)
+                # domknij poprzedni
+                if prev is not None:
+                    b = tmp.iloc[start:i]
+                    blocks.append({
+                        "gp": prev[0],
+                        "side": prev[1],
+                        "order_ids": set(b["order_id"].tolist()),
+                        "start_i": start,
+                        "end_i": i - 1,
+                    })
                 prev = key
-        return blocks        
+                start = i
+
+        # domknij ostatni
+        if prev is not None and len(tmp) > 0:
+            b = tmp.iloc[start:]
+            blocks.append({
+                "gp": prev[0],
+                "side": prev[1],
+                "order_ids": set(b["order_id"].tolist()),
+                "start_i": start,
+                "end_i": len(tmp) - 1,
+            })
+
+        return blocks    
     
     # główna funkcja generująca raport logistyczny
     def generate_logistics_report():
@@ -850,18 +878,30 @@ def run_app():
 
         blocks = build_blocks(df_group)        
               
-        # 3) liczenie wymaganego metrażu do zrobienia dla kolejnych bloków (INDEKS + occurrence_index)
-        def _calc_required_m_by_block_from_plan(df_cut_plan: pd.DataFrame) -> dict[tuple[str, int], float]:
+        # 3) liczenie wymaganego metrażu do zrobienia dla kolejnych bloków (INDEKS + occurrence_index)        
+        def _calc_required_m_by_hydra_blocks_from_plan(
+            df_cut_plan: pd.DataFrame,
+            hydra_blocks: list[dict],
+        ) -> dict[int, float]:
             """
-            Z planu liczymy metry do zrobienia dla kolejnych BLOKÓW jednego INDEKSU (bez side),
-            bo SAP podstaw nie rozróżnia strony, a side w Hydra/plan często się nie zgadza.
-            Zwraca mapę: (index, occurrence_index) -> required_m
+            Liczy metry do zrobienia DLA KAŻDEGO BLOKU HYDRY.
+            Dla bloku bierzemy order_id z Hydry i sumujemy metry z planu
+            tylko dla tych orderów i tego samego INDEKSU (profile_full).
+            Zwraca mapę: block_no (0-based) -> required_m
             """
             dfx = df_cut_plan.copy()
 
-            # INDEKS: pełny (HO9021-40000SL itd.)
+            # index = pełny profil z planu
             profile_col = "profile_full" if "profile_full" in dfx.columns else "profile"
             dfx["index"] = dfx[profile_col].astype("string").str.strip()
+
+            # normalizacja order_id jak w innych miejscach
+            dfx["order_id"] = (
+                dfx["order_id"]
+                .astype("string")
+                .str.strip()
+                .str.replace(r"\.0$", "", regex=True)
+            )
 
             target_p = pd.to_numeric(dfx["target_value_p"], errors="coerce").fillna(0.0)
 
@@ -876,30 +916,22 @@ def run_app():
             mask_started = good_p > 0
             remaining_p.loc[mask_started] = (target_p - good_p).clip(lower=0.0)
 
-            # tylko metry
             dfx["_m"] = remaining_p.where(unit == "M", 0.0)
 
-            # BLOKI: kolejne ciągi tego samego INDEKSU (ignorujemy side)
-            out: dict[tuple[str, int], float] = {}
-            occ: dict[str, int] = defaultdict(int)
+            out: dict[int, float] = {}
 
-            prev_idx = None
-            start_i = 0
+            for i, b in enumerate(hydra_blocks):
+                gp = str(b["gp"]).strip()
+                orders = b["order_ids"] or set()
 
-            idx_list = dfx["index"].tolist()
-            for i, idx in enumerate(idx_list):
-                if idx != prev_idx:
-                    if prev_idx is not None:
-                        occ[prev_idx] += 1
-                        out[(prev_idx, occ[prev_idx])] = float(dfx.loc[start_i:i-1, "_m"].sum())
-                    prev_idx = idx
-                    start_i = i
+                if not orders:
+                    out[i] = 0.0
+                    continue
 
-            if prev_idx is not None and len(dfx) > 0:
-                occ[prev_idx] += 1
-                out[(prev_idx, occ[prev_idx])] = float(dfx.loc[start_i:, "_m"].sum())
+                m = dfx.loc[(dfx["index"] == gp) & (dfx["order_id"].isin(orders)), "_m"].sum()
+                out[i] = float(m)
 
-            return out
+            return out        
 
         def pick_item_without_required(items: list[dict], remaining_occurrences: int) -> dict:
             """
@@ -914,10 +946,11 @@ def run_app():
             total_left = sum(float(it.get("qty", 0.0) or 0.0) for it in items)
             avg = total_left / remaining_occurrences
 
-            def q(it): 
+            def q(it):
                 return float(it.get("qty", 0.0) or 0.0)
 
-            best = min(items, key=lambda it: (abs(q(it) - avg), -q(it)))
+            # Przy remisie wybieramy mniejszą pozycję (żeby małe zamówienia nie trafiły na koniec)
+            best = min(items, key=lambda it: (abs(q(it) - avg), q(it)))
             items.remove(best)
             return best        
 
@@ -977,20 +1010,15 @@ def run_app():
                 if total >= req:
                     break
             return picked
-
-        
-        required_map = {}
-        hydra_occ_by_index: dict[str, int] = defaultdict(int)
-        
-        
+     
         # SMART MATCHING:
         # required_map liczy metry "blok po bloku" na podstawie planu (ignoruje side),
         # żeby lepiej dopasować wiele pozycji SAP do wielu bloków Hydry dla jednego indeksu.
         # Jeśli zauważysz rozjazdy (złe pozycje SAP przypisane do bloków) -> ustaw SMART_MATCHING_ENABLED = False.
-        if use_smart_matching:
-            # tu df_plan_df na pewno jest DataFrame (dla Pylance też)
-            assert df_plan_df is not None
+        required_by_block = {}
 
+        if use_smart_matching:
+            assert df_plan_df is not None
             try:
                 df_cut_plan = cut_from_order(df_plan_df, start_order_id)
             except Exception:
@@ -1001,13 +1029,12 @@ def run_app():
                 )
                 use_smart_matching = False
             else:
-                # TYLKO jeśli cut się powiódł
-                required_map = _calc_required_m_by_block_from_plan(df_cut_plan)
+                required_by_block = _calc_required_m_by_hydra_blocks_from_plan(df_cut_plan, blocks)
 
  
         # 3) na MVP wypisz w oknie wynik
         report_text = "=== Kolejność podstaw (Hydra) ===\n\n" + "\n".join(
-            f"{i+1}. {gp} ({side})" for i, (gp, side) in enumerate(blocks)
+            f'{i+1}. {b["gp"]} ({b["side"]})' for i, b in enumerate(blocks)
         )
         
         # schowaj tableview, pokaż text view z raportem
@@ -1024,7 +1051,7 @@ def run_app():
         sap_user = None
         sap_date = None
         
-        
+        # pobierz dane SAP/DB dla tej linii i dnia (wybranego w popupie)    
         try:
             df_sap = fetch_sap_basic_profiles(linia=linia_value, day=day_value)
         except Exception as e:
@@ -1068,28 +1095,25 @@ def run_app():
             if sap_date is None and "DATA" in df_sap.columns:
                 sap_date = str(r["DATA"]).strip()
 
-        
+        # --- dopasowanie bloków Hydry do pozycji SAP/DB ---
         lines = []
         rows = []
         lp = 1
         
-        total_blocks_by_gp = Counter(gp for gp, _ in blocks)
+        total_blocks_by_gp = Counter(b["gp"] for b in blocks)
         used_blocks_by_gp = defaultdict(int)
 
         # iterujemy po blokach z Hydry w kolejności, próbując dobrać pozycje z SAP/DB dla każdego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
-        for gp, _ in blocks:
+        # wystąpienie tego bloku w kolejności Hydry
+        for block_no, b in enumerate(blocks):
+            gp = b["gp"]
             items = sap_rows_by_index.get(gp, [])
             items.sort(key=lambda it: float(it.get("qty", 0.0) or 0.0))
             if not items:
                 continue
 
-            # wystąpienie tego bloku w kolejności Hydry
-            hydra_occ_by_index[gp] += 1
-            occ_no = hydra_occ_by_index[gp]
-            used_blocks_by_gp[gp] += 1
-
-            required_m = required_map.get((gp, occ_no))
-            
+            required_m = required_by_block.get(block_no)
+                        
             # dobieramy pozycje z SAP/DB dla tego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
             total_qty = 0.0
             total_szt = 0
