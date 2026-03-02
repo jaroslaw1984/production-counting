@@ -949,8 +949,8 @@ def run_app():
             def q(it):
                 return float(it.get("qty", 0.0) or 0.0)
 
-            # Przy remisie wybieramy mniejszą pozycję (żeby małe zamówienia nie trafiły na koniec)
-            best = min(items, key=lambda it: (abs(q(it) - avg), q(it)))
+            # Przy remisie wybieramy większą ilość (wcześniejszy blok), bo w praktyce małe domówienia są później
+            best = min(items, key=lambda it: (abs(q(it) - avg), -q(it)))
             items.remove(best)
             return best        
 
@@ -1149,6 +1149,7 @@ def run_app():
                 "pallets": "",
             })
 
+            used_blocks_by_gp[gp] += 1
             lp += 1
 
         # --- DOMKNIĘCIE: resztki SAP dla indeksów, które zostały niewykorzystane ---
