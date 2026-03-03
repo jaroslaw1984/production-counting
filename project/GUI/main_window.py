@@ -709,12 +709,22 @@ def run_app():
             return ""
         return f"Maszyna {int(m.group(1))}"
         
+    def _normalize_order_id_series(s: pd.Series) -> pd.Series:
+        s = s.astype("string").str.strip()
+        s = s.str.replace(r"\.0$", "", regex=True)
+
+        # opcjonalnie, ale mocno polecam – stabilizuje zera wiodące
+        mask = s.str.fullmatch(r"\d+").fillna(False) & (s.str.len() < 12)
+        s.loc[mask] = s.loc[mask].str.zfill(12)
+
+        return s        
+        
     def build_blocks(df: pd.DataFrame) -> list[dict]:
         # Każdy blok: ciąg (grundprofil, side) + order_id z Hydry
         tmp = df.copy()
         tmp["grundprofil"] = tmp["grundprofil"].astype("string").str.strip()
         tmp["side"] = tmp["side"].astype("string").str.strip().str.zfill(4)
-        tmp["order_id"] = tmp["order_id"].astype("string").str.strip()
+        tmp["order_id"] = _normalize_order_id_series(tmp["order_id"])
 
         blocks: list[dict] = []
         prev = None
@@ -788,6 +798,119 @@ def run_app():
             back_to_home()
             return
 
+        # Jeśli plan nie został wcześniej wczytany przez 'Wczytaj plik', spróbuj automatycznie
+        # wydobyć plan z tego samego pliku (często eksport Hydry + plan w tym samym pliku).
+        if not isinstance(app_state.get("df"), pd.DataFrame) or app_state.get("df") is None:
+            try:
+                ext = Path(file_path).suffix.lower()
+                if ext in (".xlsx", ".xls"):
+                    # próbuj odczytać arkusz jako plan produkcji — bez popupów
+                    df_try = pd.read_excel(file_path, engine="openpyxl", header=1)
+                elif ext == ".csv":
+                    df_try = pd.read_csv(file_path, encoding="utf-8-sig", sep=",", low_memory=False)
+                else:
+                    df_try = None
+
+                if isinstance(df_try, pd.DataFrame) and not df_try.empty:
+                    # wykonaj podobne przetwarzanie jak w on_open_file, ale nie pokazujemy okien
+                    try:
+                        df_try.columns = [" ".join(str(c).replace("\xa0", " ").strip().split()) for c in df_try.columns]
+                        df_try.columns = [str(c).strip() for c in df_try.columns]
+                        # wykryj kolumny i przygotuj minimalny mapping; jeżeli nie pasuje, zignoruj
+                        zlecenie_cols = [c for c in df_try.columns if c.startswith("Zlecenie")]
+                        if len(zlecenie_cols) >= 2:
+                            # spróbuj zbudować df_plan tak jak on_open_file
+                            def find_col_local(cols, *cands):
+                                cols_norm = {str(c).strip(): str(c) for c in cols}
+                                for cand in cands:
+                                    for k, original in cols_norm.items():
+                                        if k == cand.strip():
+                                            return original
+                                return None
+
+                            good_p_col = find_col_local(df_try.columns,
+                                                         "Ilość dobrej produkcji (P)",
+                                                         "Ilość dobrej produkcji(P)",
+                                                         "Ilość dobrej produkcji P")
+
+                            needed_fixed = [
+                                "Stanowisko robocze",
+                                "Artykuł",
+                                "Docelowa wartość (P)",
+                                "Jednostka (P)",
+                                "Docelowa wartość (S)",
+                                "Jednostka (S)",
+                                "Rodzaj zlecenia",
+                            ]
+                            if good_p_col:
+                                needed_fixed.insert(3, good_p_col)
+
+                            side_col = None
+                            try:
+                                side_col = detect_side_column(df_try[needed_fixed + zlecenie_cols])
+                            except Exception:
+                                side_col = None
+
+                            order_cols = [c for c in zlecenie_cols if c != side_col] if side_col else zlecenie_cols
+                            if order_cols:
+                                order_col = order_cols[0]
+                                df_plan_try = df_try[needed_fixed + [order_col, side_col] if side_col else needed_fixed + [order_col]].copy()
+                                rename_map = {order_col: "order_id", side_col: "side"} if side_col else {order_col: "order_id"}
+                                rename_map.update({
+                                    "Stanowisko robocze": "workplace",
+                                    "Artykuł": "profile",
+                                    "Docelowa wartość (P)": "target_value_p",
+                                    "Jednostka (P)": "unit_p",
+                                    "Docelowa wartość (S)": "target_value_s",
+                                    "Jednostka (S)": "unit_s",
+                                    "Rodzaj zlecenia": "order_type",
+                                })
+                                if good_p_col:
+                                    rename_map[good_p_col] = "good_qty_p"
+
+                                df_plan_try = df_plan_try.rename(columns=rename_map)
+                                # ensure we operate on a Series when converting; fallback to 0.0 column if missing
+                                if "good_qty_p" in df_plan_try.columns:
+                                    df_plan_try["good_qty_p"] = pd.to_numeric(df_plan_try["good_qty_p"], errors="coerce").fillna(0.0)
+                                else:
+                                    df_plan_try["good_qty_p"] = 0.0
+                                app_state["df"] = df_plan_try
+                                # --- NORMALIZACJA jak w on_open_file() ---
+                                df_plan_try["profile"] = df_plan_try["profile"].astype("string").str.strip()
+                                df_plan_try["profile_full"] = df_plan_try["profile"]          # pełny indeks do smart-match
+                                df_plan_try["profile"] = df_plan_try["profile"].str.split("-", n=1).str[0]  # baza pod config (jeśli potrzebujesz)
+
+                                if "side" in df_plan_try.columns:
+                                    df_plan_try["side"] = (
+                                        df_plan_try["side"].astype("string").str.strip()
+                                        .str.replace(r"\.0$", "", regex=True)
+                                        .str.zfill(4)
+                                    )
+
+                                if "order_id" in df_plan_try.columns:
+                                    df_plan_try["order_id"] = (
+                                        df_plan_try["order_id"].astype("string").str.strip()
+                                        .str.replace(r"\.0$", "", regex=True)
+                                    )
+
+                                # liczby: przecinek -> kropka (żeby required_m nie znikało)
+                                for col in ("target_value_p", "target_value_s", "good_qty_p"):
+                                    if col in df_plan_try.columns:
+                                        df_plan_try[col] = (
+                                            df_plan_try[col].astype(str)
+                                            .str.replace("\xa0", "", regex=False)
+                                            .str.replace(" ", "", regex=False)
+                                            .str.replace(",", ".", regex=False)
+                                        )
+                                        df_plan_try[col] = pd.to_numeric(df_plan_try[col], errors="coerce").fillna(0.0)                                
+                                
+                                
+                                print("[AUTO_PLAN] załadowano plan z tego samego pliku Hydry", flush=True)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
         # 2) start zlecenia
         params = ask_report_params_popup(root)
         
@@ -798,6 +921,33 @@ def run_app():
         linia_value = params["linia"]
         start_order_id = params["start_order_id"]
         day_value = params.get("day", date.today())
+
+        # użyj planu z aplikacji jeśli już został wczytany wcześniej; nie pokazujemy dialogu tutaj
+        df_plan_df = None
+        use_smart_matching = False
+        df_plan_candidate = app_state.get("df")
+        if isinstance(df_plan_candidate, pd.DataFrame) and not df_plan_candidate.empty:
+            df_plan_df = df_plan_candidate
+            use_smart_matching = True
+        else:
+            # jeśli plan nie jest w stanie aplikacji, poproś użytkownika o wskazanie pliku (opcjonalnie)
+            plan_path = filedialog.askopenfilename(
+                title="Wczytaj plan produkcji (opcjonalne)",
+                filetypes=[("Excel", "*.xlsx;*.xls"), ("CSV", "*.csv")]
+            )
+            if plan_path:
+                try:
+                    ext = Path(plan_path).suffix.lower()
+                    if ext in (".xlsx", ".xls"):
+                        df_plan_df = pd.read_excel(plan_path, engine="openpyxl")
+                    else:
+                        df_plan_df = pd.read_csv(plan_path, encoding="utf-8-sig")
+                    if isinstance(df_plan_df, pd.DataFrame) and not df_plan_df.empty:
+                        use_smart_matching = True
+                        app_state["df"] = df_plan_df
+                except Exception as e:
+                    messagebox.showwarning("Błąd wczytania planu", f"Nie udało się wczytać pliku planu: {e}\nRaport zostanie wygenerowany bez smart-matching.")
+                    use_smart_matching = False
         
         snap = load_snapshot_if_today()
         if snap and isinstance(snap.get("end_by_machine"), dict):
@@ -866,14 +1016,16 @@ def run_app():
 
             return missing_0022_articles
 
-        df_plan = app_state.get("df")
+        # jeśli wcześniej wczytaliśmy plan przez dialog, df_plan_df i use_smart_matching już są ustawione
+        # jeżeli nie, spróbuj użyć stanu aplikacji (backward compat)
+        if df_plan_df is None:
+            df_plan = app_state.get("df")
+            if isinstance(df_plan, pd.DataFrame) and not df_plan.empty:
+                df_plan_df = df_plan
+                use_smart_matching = True
 
-        df_plan_df: pd.DataFrame | None = None
-        use_smart_matching = False
-
-        if isinstance(df_plan, pd.DataFrame) and not df_plan.empty:
-            df_plan_df = df_plan
-            use_smart_matching = True
+        # DEBUG: informacja czy smart matching zostal wlaczony
+        print(f"DEBUG: use_smart_matching={use_smart_matching}, df_plan_df_rows={(len(df_plan_df) if df_plan_df is not None else 0)}", flush=True)
 
 
         blocks = build_blocks(df_group)        
@@ -886,22 +1038,25 @@ def run_app():
             """
             Liczy metry do zrobienia DLA KAŻDEGO BLOKU HYDRY.
             Dla bloku bierzemy order_id z Hydry i sumujemy metry z planu
-            tylko dla tych orderów i tego samego INDEKSU (profile_full).
+            tylko dla tych orderów i tego samego INDEKSU (profile_full/profile).
+            IGNORUJEMY side (bo SAP podstaw nie rozróżnia strony).
             Zwraca mapę: block_no (0-based) -> required_m
             """
             dfx = df_cut_plan.copy()
 
-            # index = pełny profil z planu
             profile_col = "profile_full" if "profile_full" in dfx.columns else "profile"
-            dfx["index"] = dfx[profile_col].astype("string").str.strip()
 
-            # normalizacja order_id jak w innych miejscach
-            dfx["order_id"] = (
-                dfx["order_id"]
+            # baza profilu z planu: HO9320-20000SL -> HO9320, HO9320 -> HO9320
+            dfx["index_base"] = (
+                dfx[profile_col]
                 .astype("string")
                 .str.strip()
-                .str.replace(r"\.0$", "", regex=True)
+                .str.split("-", n=1)
+                .str[0]
             )
+
+
+            dfx["order_id"] = _normalize_order_id_series(dfx["order_id"])
 
             target_p = pd.to_numeric(dfx["target_value_p"], errors="coerce").fillna(0.0)
 
@@ -922,16 +1077,24 @@ def run_app():
 
             for i, b in enumerate(hydra_blocks):
                 gp = str(b["gp"]).strip()
-                orders = b["order_ids"] or set()
+                gp_base = gp.split("-", 1)[0]  # HO9320-20000SL -> HO9320
+                orders = b.get("order_ids") or set()
 
                 if not orders:
                     out[i] = 0.0
                     continue
 
-                m = dfx.loc[(dfx["index"] == gp) & (dfx["order_id"].isin(orders)), "_m"].sum()
-                out[i] = float(m)
+                m = dfx.loc[
+                    (dfx["index_base"] == gp_base) & (dfx["order_id"].isin(orders)),
+                    "_m"
+                ].sum()
 
-            return out        
+                out[i] = float(m)
+                
+                if i == 0:
+                    print("DEBUG match:", gp, "->", gp_base, "plan_sample_base=", dfx["index_base"].head(5).tolist(), flush=True)
+
+            return out      
 
         def pick_item_without_required(items: list[dict], remaining_occurrences: int) -> dict:
             """
@@ -950,7 +1113,12 @@ def run_app():
                 return float(it.get("qty", 0.0) or 0.0)
 
             # Przy remisie wybieramy większą ilość (wcześniejszy blok), bo w praktyce małe domówienia są później
-            best = min(items, key=lambda it: (abs(q(it) - avg), -q(it)))
+            # Jeśli mamy kilka wystąpień tego indeksu (remaining_occ > 1),
+            # lepiej przydzielać większe pozycje wcześniej, żeby nie zostawić dużych resztek na koniec.
+            if remaining_occurrences > 1:
+                best = max(items, key=lambda it: q(it))
+            else:
+                best = min(items, key=lambda it: (abs(q(it) - avg), -q(it)))
             items.remove(best)
             return best        
 
@@ -1021,6 +1189,7 @@ def run_app():
             assert df_plan_df is not None
             try:
                 df_cut_plan = cut_from_order(df_plan_df, start_order_id)
+                print(f"[PLAN] df_cut_plan_rows={len(df_cut_plan)} cols={list(df_cut_plan.columns)}")
             except Exception:
                 messagebox.showwarning(
                     "Plan nie pasuje do startowego zlecenia",
@@ -1030,6 +1199,14 @@ def run_app():
                 use_smart_matching = False
             else:
                 required_by_block = _calc_required_m_by_hydra_blocks_from_plan(df_cut_plan, blocks)
+                # DEBUG: pokaż mapę wymaganych metrów dla bloków
+                
+                print("DEBUG index sample from plan:", df_cut_plan[["order_id", "profile"]].head(5).to_dict("records"), flush=True)
+                print("DEBUG first hydra gp:", blocks[0]["gp"], flush=True)
+                try:
+                    print(f"DEBUG: required_by_block={required_by_block}", flush=True)
+                except Exception:
+                    pass
 
  
         # 3) na MVP wypisz w oknie wynik
@@ -1084,10 +1261,24 @@ def run_app():
 
             jm = str(r.get("JM", "M")).strip()
 
+            # detect sequence value if present in df_sap
+            seq = None
+            # common column names for sequence (case-insensitive)
+            for cand in ("Sequenz", "sequenz", "sequence", "Sequance", "Sequenc", "sequenc"):
+                if cand in df_sap.columns:
+                    seq = r.get(cand)
+                    break
+            try:
+                if seq is not None:
+                    seq = int(float(str(seq).replace(",", ".")))
+            except Exception:
+                seq = None
+
             sap_rows_by_index.setdefault(idx, []).append({
                 "qty": qty,
                 "szt": szt,
                 "jm": jm,
+                "seq": seq,
             })
 
             if sap_user is None and "USER" in df_sap.columns:
@@ -1095,7 +1286,58 @@ def run_app():
             if sap_date is None and "DATA" in df_sap.columns:
                 sap_date = str(r["DATA"]).strip()
 
+        # Przygotuj alokację pre-allocated dla indeksów występujących wielokrotnie
+        # allocated_items: block_no -> sap_item
+        allocated_items: dict[int, dict] = {}
+        block_indices_by_gp: dict[tuple[str, str], list[int]] = defaultdict(list)
+        for block_no, b in enumerate(blocks):
+            key = (b["gp"], b["side"])
+            block_indices_by_gp[key].append(block_no)
+
+        # Jeśli mamy plan (smart matching) to alokacja nastąpi w innym miejscu.
+        # Tutaj przygotowujemy fallback: gdy smart matching wyłączony, rozdzielamy pozycje malejąco po blokach.
+        if not use_smart_matching:
+            for (gp, side), block_nos in block_indices_by_gp.items():
+                if len(block_nos) > 1:
+                    items = sap_rows_by_index.get(gp, [])
+                    if not items:
+                        continue
+                    # posortuj malejąco, ale przypisz największe do ostatnich bloków (ostatnie wystąpienie dostaje największe)
+                    # Jeśli pozycje mają "seq", sortuj po sekwencji rosnąco i przypisz in-order to bloków;
+                    # w przeciwnym razie sortuj po qty malejąco i przypisz do ostatnich bloków.
+                    has_seq = any(it.get("seq") is not None for it in items)
+                    if has_seq:
+                        items_sorted = sorted(items, key=lambda it: (it.get("seq") or 0))
+                        # przypisz in-order: pierwsza sekwencja -> pierwszy block_no
+                        for bn, sap_item in zip(block_nos, items_sorted):
+                            allocated_items[bn] = sap_item
+                            if sap_item in sap_rows_by_index.get(gp, []):
+                                sap_rows_by_index[gp].remove(sap_item)
+                    else:
+                        items_sorted = sorted(items, key=lambda it: float(it.get("qty", 0.0) or 0.0), reverse=True)
+                        # przypisz odwrotnie: od ostatniego bloku do pierwszego
+                        for bn, sap_item in zip(reversed(block_nos), items_sorted):
+                            allocated_items[bn] = sap_item
+                            # usuń z głównego źródła aby nie był użyty ponownie
+                            if sap_item in sap_rows_by_index.get(gp, []):
+                                sap_rows_by_index[gp].remove(sap_item)
+                    # DEBUG: pokaż przypisania fallback dla tego gp (zabezpieczone)
+                    try:
+                        alloc_pairs = [(k, v.get("qty")) for k, v in allocated_items.items() if k in block_nos]
+                        print(f"[FALLBACK_ALLOC] gp={gp} block_nos={block_nos} allocated={alloc_pairs}", flush=True)
+                    except Exception:
+                        pass
+
         # --- dopasowanie bloków Hydry do pozycji SAP/DB ---
+        # DEBUG: pokaż pełne allocated_items i sap_rows_by_index przed dopasowaniem
+        try:
+            alloc_debug = {k: v.get("qty") for k, v in allocated_items.items()}
+            sap_debug = {k: [it.get("qty") for it in v] for k, v in sap_rows_by_index.items()}
+            print(f"[ALLOC_DEBUG] allocated_items={alloc_debug}", flush=True)
+            print(f"[ALLOC_DEBUG] sap_rows_by_index sample={{{', '.join(f'{k}:{v}' for k,v in list(sap_debug.items())[:10])}}}", flush=True)
+        except Exception:
+            pass
+
         lines = []
         rows = []
         lp = 1
@@ -1109,30 +1351,42 @@ def run_app():
             gp = b["gp"]
             items = sap_rows_by_index.get(gp, [])
             items.sort(key=lambda it: float(it.get("qty", 0.0) or 0.0))
-            if not items:
-                continue
 
             required_m = required_by_block.get(block_no)
-                        
+            
+            print(f"[SMART] gp={gp} block={block_no} required={required_m} items={[it.get('qty') for it in items]}")
+       
             # dobieramy pozycje z SAP/DB dla tego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
             total_qty = 0.0
             total_szt = 0
-            jm = items[0]["jm"] if items else "M"
+            jm = "M"
 
-            if required_m is not None and required_m > 0:
-                picked = pick_items_best_fit(items, required_m, max_over_ratio=3.0, rel_tol=0.25, abs_tol=15.0)
-                for it in picked:
+            # Jeśli mamy pre-allocated item (fallback lub smart), użyj go niezależnie od tego czy
+            # lokalna lista `items` jest pusta (już go usunęliśmy przy alokacji)
+            if block_no in allocated_items:
+                picked_item = allocated_items[block_no]
+                total_qty = float(picked_item.get("qty", 0.0) or 0.0)
+                total_szt = int(picked_item.get("szt", 0) or 0)
+                jm = picked_item.get("jm", "M")
+            else:
+                if not items:
+                    continue
+                jm = items[0]["jm"] if items else "M"
+
+                if required_m is not None and required_m > 0:
+                    picked = pick_items_best_fit(items, required_m, max_over_ratio=3.0, rel_tol=0.25, abs_tol=15.0)
+                    for it in picked:
+                        total_qty += float(it.get("qty", 0.0))
+                        total_szt += int(it.get("szt", 0))
+                else:
+                    # fallback bezpieczny: nie wiemy ile metrów potrzeba, więc NIE sumujemy kilku pozycji naraz,
+                    # tylko bierzemy 1 najmniejszą, żeby rozrzucić je po blokach.
+                    remaining_occ = total_blocks_by_gp[gp] - used_blocks_by_gp[gp]
+                    it = pick_item_without_required(items, remaining_occ)
+                    if it is None:
+                        continue
                     total_qty += float(it.get("qty", 0.0))
                     total_szt += int(it.get("szt", 0))
-            else:
-                # fallback bezpieczny: nie wiemy ile metrów potrzeba, więc NIE sumujemy kilku pozycji naraz,
-                # tylko bierzemy 1 najmniejszą, żeby rozrzucić je po blokach.
-                remaining_occ = total_blocks_by_gp[gp] - used_blocks_by_gp[gp]
-                it = pick_item_without_required(items, remaining_occ)
-                if it is None:
-                    continue
-                total_qty += float(it.get("qty", 0.0))
-                total_szt += int(it.get("szt", 0))
 
             # dodaj linię do raportu
             lines.append(f"{lp:>2}. {gp:<18}  {total_qty:>10.1f} {jm:<2}  {total_szt:>6}")
