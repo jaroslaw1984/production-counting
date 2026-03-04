@@ -757,6 +757,14 @@ def run_app():
                 "start_i": start,
                 "end_i": len(tmp) - 1,
             })
+            
+        # debug: wypisz ile bloków i ile unikalnych gp:    
+        # print("[BLOCKS] count per gp:", Counter(b["gp"] for b in blocks), flush=True)
+
+        # # i dla konkretnego indeksu:
+        # for i, b in enumerate(blocks):
+        #     if b["gp"] in ("HO8030-40000SL", "HO9030-70000SL"):
+        #         print(f"[BLOCK] {i} gp={b['gp']} side={b.get('side')} orders={len(b.get('order_ids') or [])}", flush=True)            
 
         return blocks    
     
@@ -829,9 +837,9 @@ def run_app():
                                 return None
 
                             good_p_col = find_col_local(df_try.columns,
-                                                         "Ilość dobrej produkcji (P)",
-                                                         "Ilość dobrej produkcji(P)",
-                                                         "Ilość dobrej produkcji P")
+                                "Ilość dobrej produkcji (P)",
+                                "Ilość dobrej produkcji(P)",
+                                "Ilość dobrej produkcji P")
 
                             needed_fixed = [
                                 "Stanowisko robocze",
@@ -904,8 +912,8 @@ def run_app():
                                         )
                                         df_plan_try[col] = pd.to_numeric(df_plan_try[col], errors="coerce").fillna(0.0)                                
                                 
-                                
-                                print("[AUTO_PLAN] załadowano plan z tego samego pliku Hydry", flush=True)
+                                # jeśli wszystko poszło dobrze, ustawiamy df_plan i use_smart_matching
+                                # print("[AUTO_PLAN] załadowano plan z tego samego pliku Hydry", flush=True)
                     except Exception:
                         pass
             except Exception:
@@ -1025,7 +1033,7 @@ def run_app():
                 use_smart_matching = True
 
         # DEBUG: informacja czy smart matching zostal wlaczony
-        print(f"DEBUG: use_smart_matching={use_smart_matching}, df_plan_df_rows={(len(df_plan_df) if df_plan_df is not None else 0)}", flush=True)
+        # print(f"DEBUG: use_smart_matching={use_smart_matching}, df_plan_df_rows={(len(df_plan_df) if df_plan_df is not None else 0)}", flush=True)
 
 
         blocks = build_blocks(df_group)        
@@ -1091,8 +1099,9 @@ def run_app():
 
                 out[i] = float(m)
                 
-                if i == 0:
-                    print("DEBUG match:", gp, "->", gp_base, "plan_sample_base=", dfx["index_base"].head(5).tolist(), flush=True)
+                # debug: wypisz wymagany metr dla pierwszych kilku bloków
+                # if i == 0:
+                #     print("DEBUG match:", gp, "->", gp_base, "plan_sample_base=", dfx["index_base"].head(5).tolist(), flush=True)
 
             return out      
 
@@ -1189,7 +1198,7 @@ def run_app():
             assert df_plan_df is not None
             try:
                 df_cut_plan = cut_from_order(df_plan_df, start_order_id)
-                print(f"[PLAN] df_cut_plan_rows={len(df_cut_plan)} cols={list(df_cut_plan.columns)}")
+                # print(f"[PLAN] df_cut_plan_rows={len(df_cut_plan)} cols={list(df_cut_plan.columns)}")
             except Exception:
                 messagebox.showwarning(
                     "Plan nie pasuje do startowego zlecenia",
@@ -1200,11 +1209,11 @@ def run_app():
             else:
                 required_by_block = _calc_required_m_by_hydra_blocks_from_plan(df_cut_plan, blocks)
                 # DEBUG: pokaż mapę wymaganych metrów dla bloków
-                
-                print("DEBUG index sample from plan:", df_cut_plan[["order_id", "profile"]].head(5).to_dict("records"), flush=True)
-                print("DEBUG first hydra gp:", blocks[0]["gp"], flush=True)
+                # print("DEBUG index sample from plan:", df_cut_plan[["order_id", "profile"]].head(5).to_dict("records"), flush=True)
+                # print("DEBUG first hydra gp:", blocks[0]["gp"], flush=True)
                 try:
-                    print(f"DEBUG: required_by_block={required_by_block}", flush=True)
+                    # print(f"DEBUG: required_by_block={required_by_block}", flush=True)
+                    pass
                 except Exception:
                     pass
 
@@ -1330,13 +1339,13 @@ def run_app():
 
         # --- dopasowanie bloków Hydry do pozycji SAP/DB ---
         # DEBUG: pokaż pełne allocated_items i sap_rows_by_index przed dopasowaniem
-        try:
-            alloc_debug = {k: v.get("qty") for k, v in allocated_items.items()}
-            sap_debug = {k: [it.get("qty") for it in v] for k, v in sap_rows_by_index.items()}
-            print(f"[ALLOC_DEBUG] allocated_items={alloc_debug}", flush=True)
-            print(f"[ALLOC_DEBUG] sap_rows_by_index sample={{{', '.join(f'{k}:{v}' for k,v in list(sap_debug.items())[:10])}}}", flush=True)
-        except Exception:
-            pass
+        # try:
+        #     alloc_debug = {k: v.get("qty") for k, v in allocated_items.items()}
+        #     sap_debug = {k: [it.get("qty") for it in v] for k, v in sap_rows_by_index.items()}
+        #     print(f"[ALLOC_DEBUG] allocated_items={alloc_debug}", flush=True)
+        #     print(f"[ALLOC_DEBUG] sap_rows_by_index sample={{{', '.join(f'{k}:{v}' for k,v in list(sap_debug.items())[:10])}}}", flush=True)
+        # except Exception:
+        #     pass
 
         lines = []
         rows = []
@@ -1354,7 +1363,8 @@ def run_app():
 
             required_m = required_by_block.get(block_no)
             
-            print(f"[SMART] gp={gp} block={block_no} required={required_m} items={[it.get('qty') for it in items]}")
+            # DEBUG: pokaż blok i wymagany metr dla tego bloku przed dobieraniem pozycji
+            # print(f"[SMART] gp={gp} block={block_no} required={required_m} items={[it.get('qty') for it in items]}")
        
             # dobieramy pozycje z SAP/DB dla tego bloku (INDEKS), żeby zbliżyć się do required_m (jeśli mamy) — ale nie mniej!
             total_qty = 0.0
