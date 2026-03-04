@@ -1,3 +1,5 @@
+import sys
+
 import customtkinter
 import customtkinter as ctk
 import pandas as pd
@@ -8,6 +10,8 @@ import os
 import tempfile
 import re
 import json
+import threading
+import subprocess
 from PIL import Image
 from datetime import date, timedelta, datetime
 from tkinter import filedialog, messagebox, ttk
@@ -42,6 +46,7 @@ SHIFTS_PER_DAY = 3
 
 # ścieżka do pliku z helpem
 HELP_SECTIONS_PATH = BASE_DIR / "data" / "help_sections.json"
+LATEST_JSON_PATH = r"R:\Produkcja\Planowanie OKL\Production Counter Program\latest.json"
 
 ORDER_ALIASES = [
     "zlecenie", "nr zlecenia", "zlecenie nr",
@@ -141,6 +146,37 @@ def run_app():
     print_btn.place_forget()
     
     text.configure(state="disabled")  # na start zablokowany do edycji
+
+
+    def _version_tuple(v: str) -> tuple[int, ...]:
+        try:
+            return tuple(int(x) for x in str(v).strip().split("."))
+        except Exception:
+            return (0,)
+
+    def _fetch_latest_info() -> dict:
+        # prosto: czytamy JSON z sieci
+        p = Path(LATEST_JSON_PATH)
+        raw = p.read_text(encoding="utf-8")
+        return json.loads(raw)
+
+    def check_update_async(on_done):
+        """
+        on_done(latest_version: str|None, error: str|None)
+        """
+        def worker():
+            try:
+                data = _fetch_latest_info()
+                server_version = str(data.get("version", "")).strip()
+                if not server_version:
+                    raise ValueError("latest.json nie ma pola 'version'")
+                on_done(server_version, None)
+            except Exception as e:
+                on_done(None, f"{type(e).__name__}: {e}")
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
 
     # funkcja do pokazywania/ukrywania przycisków "Drukuj" i "Edytuj" w zależności od tego czy mamy aktualnie wygenerowany raport i jaki to jest raport
     def _set_print_visible(visible: bool) -> None:
@@ -3763,37 +3799,135 @@ def run_app():
         popup.title("O programie")
         popup.resizable(False, False)
         popup.grab_set()
-        
-        text = (
-            f"{PROGRAM_NAME} \n\n"
-            f"{DESCRIPTION}"
-            f"Email firmowy: {COMPANY_MAIL}\n"
-            f"Email prywatny: {PRIVATE_MAIL}\n\n"
-            f"Wersja: {PROGRAM_VERSION}\n\n"
-            f"© Rok: {PROGRAM_YEAR} {PROGRAM_AUTHOR} "
-        )
 
-        label = customtkinter.CTkLabel(
+        popup.grid_columnconfigure(0, weight=1)
+
+        title_lbl = customtkinter.CTkLabel(
             popup,
-            text=text,
+            text=PROGRAM_NAME,
+            justify="center",
+            font=customtkinter.CTkFont(size=18, weight="bold"),
+        )
+        title_lbl.grid(row=0, column=0, padx=20, pady=(18, 6), sticky="ew")
+
+        desc_lbl = customtkinter.CTkLabel(
+            popup,
+            text=DESCRIPTION.strip(),
             justify="center",
             wraplength=360,
-            font=customtkinter.CTkFont(size=13)
+            font=customtkinter.CTkFont(size=13),
         )
-        label.pack(padx=20, pady=20)
+        desc_lbl.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
 
-        customtkinter.CTkButton(
+        mail_lbl = customtkinter.CTkLabel(
             popup,
-            text="OK",
-            command=popup.destroy
-        ).pack(pady=(0, 15))
+            text=(
+                f"Email firmowy: {COMPANY_MAIL}\n"
+                f"Email prywatny: {PRIVATE_MAIL}"
+            ),
+            justify="center",
+            wraplength=360,
+            font=customtkinter.CTkFont(size=13),
+        )
+        mail_lbl.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
+
+        ver_lbl = customtkinter.CTkLabel(
+            popup,
+            text=f"Wersja: {PROGRAM_VERSION}",
+            justify="center",
+            font=customtkinter.CTkFont(size=13, weight="bold"),
+        )
+        ver_lbl.grid(row=3, column=0, padx=20, pady=(0, 6), sticky="ew")
+
+        status_var = tk.StringVar(value="Sprawdzam aktualizacje…")
+        status_lbl = customtkinter.CTkLabel(
+            popup,
+            textvariable=status_var,
+            justify="center",
+            wraplength=360,
+            font=customtkinter.CTkFont(size=12),
+            text_color="#9aa0a6",
+        )
+        status_lbl.grid(row=4, column=0, padx=20, pady=(0, 10), sticky="ew")
+
+        # sekcja aktualizacji – ukryta domyślnie, pokażmy ją tylko jeśli jest aktualizacja
+        update_btn = customtkinter.CTkButton(
+            popup,
+            text="",
+            fg_color="#1f6aa5",
+            hover_color="#144a73",
+            command=lambda: _start_updater_and_exit(Path(sys.argv[0]).resolve().parent, "ProductionCounter.exe"),
+        )
+        update_btn.grid(row=5, column=0, padx=20, pady=(0, 12), sticky="ew")
+        update_btn.grid_remove()  # ukryty domyślnie
+
+        footer_lbl = customtkinter.CTkLabel(
+            popup,
+            text=f"© Rok: {PROGRAM_YEAR} {PROGRAM_AUTHOR}",
+            justify="center",
+            font=customtkinter.CTkFont(size=12),
+            text_color="#9aa0a6",
+        )
+        footer_lbl.grid(row=6, column=0, padx=20, pady=(0, 12), sticky="ew")
+
+        ok_btn = customtkinter.CTkButton(popup, text="OK", command=popup.destroy)
+        ok_btn.grid(row=7, column=0, padx=20, pady=(0, 16))
+        
+        def _start_updater_and_exit(current_app_dir: Path, exe_name: str) -> None:
+            updater_exe = current_app_dir.parent / "ProductionCounter_updater.exe"
+            if not updater_exe.exists():
+                messagebox.showerror("Aktualizacja", f"Brak updatera:\n{updater_exe}")
+                return
+
+            pid = os.getpid()
+
+            subprocess.Popen(
+                [
+                    str(updater_exe),
+                    "--pid", str(pid),
+                    "--latest_json", LATEST_JSON_PATH,
+                    "--current_dir", str(current_app_dir),
+                    "--exe_name", exe_name,
+                ],
+                close_fds=True,
+            )
+
+            # zamykamy aplikację, żeby zwolnić pliki
+            try:
+                # jeśli masz root, to root.destroy()
+                sys.exit(0)
+            except SystemExit:
+                raise        
+
+        # funkcja callback po sprawdzeniu aktualizacji (wywoływana z wątku asynchronicznego)
+        def on_update_check_done(server_version: str | None, error: str | None):
+            # wracamy do wątku GUI
+            def apply():
+                if error:
+                    status_var.set(f"Nie mogę sprawdzić aktualizacji: {error}")
+                    return
+
+                assert server_version is not None
+                if _version_tuple(server_version) > _version_tuple(PROGRAM_VERSION):
+                    status_var.set("Dostępna aktualizacja ✅")
+                    update_btn.configure(text=f"Dostępna nowa wersja {server_version}")
+                    update_btn.grid()
+                else:
+                    status_var.set("Brak aktualizacji.")
+                    update_btn.grid_remove()
+
+            try:
+                popup.after(0, apply)
+            except Exception:
+                pass
+
+        check_update_async(on_update_check_done)
 
         try:
             center_popup(parent, popup)
         except Exception:
             pass
     
-
 
     # funkcja czyszczenia textboxa
     def clean_text():
