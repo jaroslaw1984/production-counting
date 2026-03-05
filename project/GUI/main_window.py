@@ -46,7 +46,7 @@ SHIFTS_PER_DAY = 3
 
 # ścieżka do pliku z helpem
 HELP_SECTIONS_PATH = BASE_DIR / "data" / "help_sections.json"
-LATEST_JSON_PATH = r"R:\Produkcja\Planowanie OKL\Production Counter Program\latest.json"
+LATEST_JSON_PATH = r"\\na02\groups\Produkcja\Planowanie OKL\Production Counter Program\latest.json"
 
 ORDER_ALIASES = [
     "zlecenie", "nr zlecenia", "zlecenie nr",
@@ -3849,15 +3849,22 @@ def run_app():
             text_color="#9aa0a6",
         )
         status_lbl.grid(row=4, column=0, padx=20, pady=(0, 10), sticky="ew")
-
+        
         # sekcja aktualizacji – ukryta domyślnie, pokażmy ją tylko jeśli jest aktualizacja
+        def _on_update_click():
+            app_exe = Path(sys.argv[0]).resolve()
+            current_app_dir = app_exe.parent
+            exe_name = app_exe.name
+            _start_updater_and_exit(current_app_dir, exe_name)
+
         update_btn = customtkinter.CTkButton(
             popup,
             text="",
             fg_color="#1f6aa5",
             hover_color="#144a73",
-            command=lambda: _start_updater_and_exit(Path(sys.argv[0]).resolve().parent, "ProductionCounter.exe"),
-        )
+            command=_on_update_click,
+        )        
+
         update_btn.grid(row=5, column=0, padx=20, pady=(0, 12), sticky="ew")
         update_btn.grid_remove()  # ukryty domyślnie
 
