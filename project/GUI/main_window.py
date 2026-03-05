@@ -3855,6 +3855,9 @@ def run_app():
             app_exe = Path(sys.argv[0]).resolve()
             current_app_dir = app_exe.parent
             exe_name = app_exe.name
+            print("app_exe:", app_exe)
+            print("current_app_dir:", current_app_dir)
+            print("exe_name:", exe_name)
             _start_updater_and_exit(current_app_dir, exe_name)
 
         update_btn = customtkinter.CTkButton(
@@ -3899,12 +3902,23 @@ def run_app():
                 close_fds=True,
             )
 
-            # zamykamy aplikację, żeby zwolnić pliki
+            # zamykamy aplikację, żeby zwolnić pliki (na 100% kończymy proces)
             try:
-                # jeśli masz root, to root.destroy()
-                sys.exit(0)
-            except SystemExit:
-                raise        
+                # najpierw zamknij okna GUI
+                try:
+                    popup.destroy()
+                except Exception:
+                    pass
+
+                try:
+                    popup.winfo_toplevel().destroy()
+                except Exception:
+                    pass
+
+                # twarde wyjście = brak ryzyka, że PID dalej żyje i blokuje pliki
+                os._exit(0)
+            except Exception:
+                os._exit(0)   
 
         # funkcja callback po sprawdzeniu aktualizacji (wywoływana z wątku asynchronicznego)
         def on_update_check_done(server_version: str | None, error: str | None):
