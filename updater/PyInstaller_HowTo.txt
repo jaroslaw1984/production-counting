@@ -1,0 +1,4 @@
+Remove-Item -Recurse -Force .\build, .\dist -ErrorAction SilentlyContinue
+Remove-Item -Force .\ProductionCounter.spec -ErrorAction SilentlyContinue
+
+pyinstaller --noconfirm --onedir --console updater.py --icon icon.ico --name ProductionCounter_updater 
