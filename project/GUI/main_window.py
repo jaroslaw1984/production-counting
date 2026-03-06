@@ -2394,6 +2394,9 @@ def run_app():
                 pass
         app_state["table_frame"] = None
 
+        # domyślnie chowamy przyciski raportu
+        _set_print_visible(False)
+
         # upewnij się że textbox jest widoczny
         try:
             text.grid(row=1, column=0, sticky="nsew")
@@ -2407,6 +2410,7 @@ def run_app():
         
     # funkcja wyświetlania DataFrame w tabeli Treeview
     def show_table_from_df(df: pd.DataFrame):
+        _set_print_visible(False)
         # 1) schowaj textbox
         hide_placeholder()
 
