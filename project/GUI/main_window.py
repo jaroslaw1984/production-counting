@@ -68,6 +68,8 @@ def run_app():
     app_state: dict[str, Any] = {
         "df": None,
         "df_hydra": None,
+        "plan_df": None,
+        "smart_plan_df": None,
         "hydra_path": None,
         "cfg": None,
         "machine_cfg": None,
@@ -288,19 +290,31 @@ def run_app():
 
     # podobna funkcja, ale obcina od zlecenia (włącznie) do końca
     def cut_from_order(df: pd.DataFrame, start_order_id: str) -> pd.DataFrame:
+        if "order_id" not in df.columns:
+            raise ValueError("Brak kolumny order_id w planie.")
+
         start_norm = _normalize_order_id(start_order_id)
 
-        # zrób kolumnę pomocniczą do porównania
         tmp = df.copy()
-        tmp["_order_norm"] = tmp["order_id"].map(_normalize_order_id)
+        tmp["_order_norm"] = tmp["order_id"].astype("string").map(_normalize_order_id)
+
+        # DEBUG
+        # print("DEBUG cut_from_order start_order_id:", start_order_id)
+        # print("DEBUG cut_from_order start_norm:", start_norm)
+        # print("DEBUG cut_from_order first 20 raw:", tmp["order_id"].astype("string").head(20).tolist())
+        # print("DEBUG cut_from_order first 20 norm:", tmp["_order_norm"].head(20).tolist())
 
         hits = tmp.index[tmp["_order_norm"] == start_norm].tolist()
+        
+        # DEBUG
+        # print("DEBUG cut_from_order hits:", hits[:10])
+
         if not hits:
-            # debug pomocny: pokaż 10 pierwszych zleceń jakie program widzi
-            sample = tmp["order_id"].head(10).tolist()
+            sample = tmp["order_id"].astype("string").head(15).tolist()
             raise ValueError(
                 f"Nie znaleziono startowego zlecenia: {start_order_id}\n"
-                f"(dla porównania: pierwsze zlecenia w pliku: {sample})"
+                f"(po normalizacji: {start_norm})\n"
+                f"(pierwsze zlecenia w pliku: {sample})"
             )
 
         return df.loc[hits[0]:].reset_index(drop=True)
@@ -844,7 +858,7 @@ def run_app():
 
         # Jeśli plan nie został wcześniej wczytany przez 'Wczytaj plik', spróbuj automatycznie
         # wydobyć plan z tego samego pliku (często eksport Hydry + plan w tym samym pliku).
-        if not isinstance(app_state.get("df"), pd.DataFrame) or app_state.get("df") is None:
+        if not isinstance(app_state.get("plan_df"), pd.DataFrame) or app_state.get("plan_df") is None:
             try:
                 ext = Path(file_path).suffix.lower()
                 if ext in (".xlsx", ".xls"):
@@ -918,7 +932,7 @@ def run_app():
                                     df_plan_try["good_qty_p"] = pd.to_numeric(df_plan_try["good_qty_p"], errors="coerce").fillna(0.0)
                                 else:
                                     df_plan_try["good_qty_p"] = 0.0
-                                app_state["df"] = df_plan_try
+                                app_state["smart_plan_df"] = df_plan_try
                                 # --- NORMALIZACJA jak w on_open_file() ---
                                 df_plan_try["profile"] = df_plan_try["profile"].astype("string").str.strip()
                                 df_plan_try["profile_full"] = df_plan_try["profile"]          # pełny indeks do smart-match
@@ -967,31 +981,13 @@ def run_app():
         day_value = params.get("day", date.today())
 
         # użyj planu z aplikacji jeśli już został wczytany wcześniej; nie pokazujemy dialogu tutaj
-        df_plan_df = None
-        use_smart_matching = False
-        df_plan_candidate = app_state.get("df")
+        df_plan_df = app_state.get("smart_plan_df")
+        use_smart_matching = isinstance(df_plan_df, pd.DataFrame) and not df_plan_df.empty
+
+        df_plan_candidate = app_state.get("smart_plan_df")
         if isinstance(df_plan_candidate, pd.DataFrame) and not df_plan_candidate.empty:
             df_plan_df = df_plan_candidate
             use_smart_matching = True
-        else:
-            # jeśli plan nie jest w stanie aplikacji, poproś użytkownika o wskazanie pliku (opcjonalnie)
-            plan_path = filedialog.askopenfilename(
-                title="Wczytaj plan produkcji (opcjonalne)",
-                filetypes=[("Excel", "*.xlsx;*.xls"), ("CSV", "*.csv")]
-            )
-            if plan_path:
-                try:
-                    ext = Path(plan_path).suffix.lower()
-                    if ext in (".xlsx", ".xls"):
-                        df_plan_df = pd.read_excel(plan_path, engine="openpyxl")
-                    else:
-                        df_plan_df = pd.read_csv(plan_path, encoding="utf-8-sig")
-                    if isinstance(df_plan_df, pd.DataFrame) and not df_plan_df.empty:
-                        use_smart_matching = True
-                        app_state["df"] = df_plan_df
-                except Exception as e:
-                    messagebox.showwarning("Błąd wczytania planu", f"Nie udało się wczytać pliku planu: {e}\nRaport zostanie wygenerowany bez smart-matching.")
-                    use_smart_matching = False
         
         snap = load_snapshot_if_today()
         if snap and isinstance(snap.get("end_by_machine"), dict):
@@ -1063,11 +1059,11 @@ def run_app():
 
         # jeśli wcześniej wczytaliśmy plan przez dialog, df_plan_df i use_smart_matching już są ustawione
         # jeżeli nie, spróbuj użyć stanu aplikacji (backward compat)
-        if df_plan_df is None:
-            df_plan = app_state.get("df")
-            if isinstance(df_plan, pd.DataFrame) and not df_plan.empty:
-                df_plan_df = df_plan
-                use_smart_matching = True
+        # if df_plan_df is None:
+        #     df_plan = app_state.get("plan_df")
+        #     if isinstance(df_plan, pd.DataFrame) and not df_plan.empty:
+        #         df_plan_df = df_plan
+        #         use_smart_matching = True
 
         # DEBUG: informacja czy smart matching zostal wlaczony
         # print(f"DEBUG: use_smart_matching={use_smart_matching}, df_plan_df_rows={(len(df_plan_df) if df_plan_df is not None else 0)}", flush=True)
@@ -1235,14 +1231,21 @@ def run_app():
             assert df_plan_df is not None
             try:
                 df_cut_plan = cut_from_order(df_plan_df, start_order_id)
-                # print(f"[PLAN] df_cut_plan_rows={len(df_cut_plan)} cols={list(df_cut_plan.columns)}")
-            except Exception:
+                # debug: pokaż kilka pierwszych order_id z planu po cięciu, żeby zweryfikować czy start_order_id jest dobrze dopasowane
+                # print("DEBUG start_order_id:", start_order_id)
+                # print("DEBUG plan_df rows:", len(df_plan_df))
+                # print("DEBUG first 15 order_id:", df_plan_df["order_id"].astype("string").head(15).tolist())
+            except Exception as e:
+                # w przypadku błędu cięcia planu (np. start_order_id nie pasuje do żadnego w planie), wyłączamy smart matching i pokazujemy ostrzeżenie
+                # print("DEBUG SMART_MATCH ERROR:", repr(e))
                 messagebox.showwarning(
                     "Plan nie pasuje do startowego zlecenia",
-                    "Nie znalazłem startowego zlecenia w planie produkcji.\n"
-                    "Raport zostanie wygenerowany bez inteligentnego dopasowania (stary tryb)."
+                    f"Smart matching wyłączył się przez błąd:\n{type(e).__name__}: {e}\n\n"
+                    "Raport zostanie wygenerowany bez inteligentnego dopasowania."
                 )
                 use_smart_matching = False
+                # DEBUG: pokaż kilka pierwszych order_id z planu, żeby pomóc zdiagnozować problem z dopasowaniem
+                print("DEBUG plan_df contains:", df_plan_df["order_id"].astype("string").str.strip().head(50).tolist())
             else:
                 required_by_block = _calc_required_m_by_hydra_blocks_from_plan(df_cut_plan, blocks)
                 # DEBUG: pokaż mapę wymaganych metrów dla bloków
@@ -2861,7 +2864,7 @@ def run_app():
 
     # główna funkcja przeliczania produkcji
     def calculate_production():
-        df_plan = app_state.get("df")
+        df_plan = app_state.get("plan_df")
         if df_plan is None or df_plan.empty:
             messagebox.showwarning("Brak danych", "Najpierw wczytaj dane produkcyjne za pomocą przycisku 'Wczytaj plik', aby móc przeliczyć produkcję.")
             back_to_home()
@@ -3314,9 +3317,9 @@ def run_app():
 
             # baza pod config / zbrojenia (Twoja dotychczasowa logika)
             df["profile"] = df["profile_full"].str.split("-", n=1).str[0]
-
-
-            app_state["df"] = df  # zapamiętaj
+            
+            # Zapmiętaj w stanie aplikacji
+            app_state["plan_df"] = df 
 
         except Exception as e:
             messagebox.showerror("Błąd wczytywania pliku", str(e))
