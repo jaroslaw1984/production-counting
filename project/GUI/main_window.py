@@ -1004,8 +1004,9 @@ def run_app():
         if not shift_line:
             messagebox.showwarning(
                 f"Brak daty zakończenia dla maszyny {linia_value}",
-                "Najpierw wykonaj: Wczytaj maszyny → Przelicz produkcję.\n"
-                "Raport zapotrzebowania wymaga daty zakończenia grupy."
+                "Nie znaleziono zapisanej daty w snapshot.\n\n"
+                f"Szukana maszyna: {linia_value}\n"
+                "Najpierw wykonaj: Wczytaj maszyny -> Wybierz wszystkie -> Zapisz terminy."
             )
             back_to_home()
             return
