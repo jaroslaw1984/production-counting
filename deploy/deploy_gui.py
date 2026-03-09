@@ -1,5 +1,6 @@
 import customtkinter as ctk
 from datetime import datetime
+from deploy_logic import ReleaseBuilder
 
 class DeployApp(ctk.CTk):
     def __init__(self):
@@ -104,20 +105,31 @@ class DeployApp(ctk.CTk):
         self.update_idletasks()
 
     def start_deployment(self):
-        # Pobranie danych z kontrolek
         version = self.version_entry.get().strip()
         notes = self.notes_textbox.get("1.0", "end").strip()
-        
+
         if not version:
             self.log_message("BŁĄD: Podaj numer wersji przed publikacją!")
             return
 
-        self.log_message(f"Rozpoczynam wdrażanie wersji: {version}")
-        
-        # Blokujemy przycisk, żeby nie kliknąć dwa razy
-        self.deploy_btn.configure(state="disabled", text="Przetwarzanie...")
-        
-        # TODO: Tutaj w przyszłości uruchomimy logikę z deploy_logic.py w osobnym wątku
+        self.log_message(f"Rozpoczynam przygotowania wersji: {version}")
+        self.deploy_btn.configure(state="disabled", text="Przetwarzanie w toku...")
+
+        def on_process_done(success: bool):
+            """Funkcja wywoływana, gdy logika skończy pracę."""
+            # Przywracamy przycisk (z użyciem after, by wrócić do wątku GUI)
+            self.after(0, lambda: self.deploy_btn.configure(state="normal", text="Zbuduj i opublikuj"))
+            if success:
+                self.after(0, lambda: self.version_entry.delete(0, 'end'))
+
+        # Tworzymy i uruchamiamy logikę
+        builder = ReleaseBuilder(
+            version=version,
+            notes=notes,
+            log_callback=self.log_message,
+            done_callback=on_process_done
+        )
+        builder.start()
 
 
 if __name__ == "__main__":

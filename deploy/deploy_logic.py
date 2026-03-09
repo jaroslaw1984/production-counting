@@ -2,6 +2,7 @@ import subprocess
 import shutil
 import hashlib
 import threading
+import sys
 from pathlib import Path
 
 class ReleaseBuilder:
@@ -56,7 +57,8 @@ class ReleaseBuilder:
         
         # Twoja dokładna komenda z notatnika rozbita na listę argumentów
         command = [
-            "python", "-m", "PyInstaller", 
+            # sys.executable to zmienna, która zawsze przechowuje pełną ścieżkę do aktywnego interpretera Pythona
+            sys.executable, "-m", "PyInstaller", 
             "--noconsole", 
             "--onedir", 
             "--clean", 
