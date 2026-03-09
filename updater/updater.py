@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 import zipfile
+import hashlib
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
@@ -152,7 +153,6 @@ def pid_exists(pid: int) -> bool:
     except Exception:
         return False
 
-
 def wait_for_pid_exit(pid: int, timeout_sec: int = 120, ui: UpdateWindow | None = None, log_path: Path | None = None) -> bool:
     t0 = time.time()
     while pid_exists(pid):
@@ -195,6 +195,26 @@ def find_dir_with_exe(root: Path, exe_name: str) -> Path | None:
             return p.parent
     return None
 
+def verify_sha256(file_path: Path, expected_hash: str) -> bool:
+    """
+    Oblicza hash SHA-256 dla pliku i porównuje go z oczekiwanym.
+    Zwraca True jeśli hashe się zgadzają, False w przeciwnym razie.
+    """
+    if not expected_hash:
+        return False  # Brak hasha traktujemy jako błąd weryfikacji
+
+    sha256_hash = hashlib.sha256()
+    
+    # Otwieramy plik w trybie binarnym ("rb")
+    with file_path.open("rb") as f:
+        # Czytamy plik paczkami po 64 KB (65536 bajtów) używając operatora morsa (walrus operator)
+        while chunk := f.read(65536):
+            sha256_hash.update(chunk)
+            
+    calculated_hash = sha256_hash.hexdigest()
+    
+    # Porównujemy ignorując wielkość liter, tak dla bezpieczeństwa
+    return calculated_hash.lower() == expected_hash.strip().lower()
 
 def retry(action, *, attempts: int = 30, delay: float = 0.5, on_error=None):
     last = None
@@ -287,6 +307,27 @@ def main() -> int:
 
         zip_path = str(data.get("zip_path", "")).strip()
         version = str(data.get("version", "")).strip()
+        
+        # NOWE: Pobieramy sumę kontrolną z pliku JSON
+        expected_sha256 = str(data.get("sha256", "")).strip()
+        
+        log(f"latest.version={version}", log_path)
+        log(f"latest.zip_path={zip_path}", log_path)
+        log(f"latest.sha256={expected_sha256}", log_path)
+
+        if not zip_path or not version:
+            return fail(ui, log_path, "Plik latest.json nie zawiera 'zip_path' lub 'version'.", 3)
+            
+        # NOWE: Walidacja, czy suma kontrolna w ogóle została podana w JSONie
+        if not expected_sha256:
+            return fail(ui, log_path, "Plik latest.json nie zawiera sumy kontrolnej 'sha256'. Aktualizacja zatrzymana ze względów bezpieczeństwa.", 3)        
+        try:
+            data = read_latest(args.latest_json)
+        except Exception as e:
+            return fail(ui, log_path, f"Nie udało się odczytać latest.json:\n{type(e).__name__}: {e}", 3)
+
+        zip_path = str(data.get("zip_path", "")).strip()
+        version = str(data.get("version", "")).strip()
         log(f"latest.version={version}", log_path)
         log(f"latest.zip_path={zip_path}", log_path)
 
@@ -305,6 +346,16 @@ def main() -> int:
             log(f"zip_download_ok size={zip_local.stat().st_size}", log_path)
         except Exception as e:
             return fail(ui, log_path, f"Nie udało się pobrać paczki aktualizacji:\n{type(e).__name__}: {e}", 3)
+
+        # ==========================================
+        # NOWY KROK 2.5) Weryfikacja SHA256
+        # ==========================================
+        ui.set_status("Weryfikacja spójności pobranej paczki...")
+        if not verify_sha256(zip_local, expected_sha256):
+            return fail(ui, log_path, "Błąd weryfikacji sumy kontrolnej SHA256. Plik instalacyjny jest uszkodzony. Aktualizacja została przerwana.", 8)
+        
+        log("sha256_verification_ok", log_path)
+        # ==========================================
 
         # 3) extract
         ui.set_status("Rozpakowywanie plików aktualizacji...")
