@@ -1,5 +1,4 @@
 import sys
-
 import customtkinter
 import customtkinter as ctk
 import pandas as pd
