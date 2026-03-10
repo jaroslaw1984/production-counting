@@ -43,8 +43,11 @@ class ReleaseBuilder:
             # Krok 3: Wyliczenie SHA256
             sha256_hash = self._calculate_sha256(zip_file)
             
-            # Krok 4 & 5 (Sieć) dodamy później
-            self.log("Test lokalny zakończony pomyślnie. Plik ZIP czeka w folderze dist.")
+            # Krok 4: Wysłanie na dysk sieciowy
+            target_zip_path = self._upload_to_server(zip_file)
+            
+            # Krok 5: Aktualizacja latest.json 
+            self._update_latest_json(sha256_hash, target_zip_path)
             
             self.log("=== PROCES ZAKOŃCZONY ===")
             self.on_done(True) # Sukces
@@ -60,7 +63,8 @@ class ReleaseBuilder:
         command = [
             # sys.executable to zmienna, która zawsze przechowuje pełną ścieżkę do aktywnego interpretera Pythona
             sys.executable, "-m", "PyInstaller",
-            "--noconsole", 
+            "--noconsole",
+            "-y", 
             "--onedir", 
             "--clean", 
             "--name", "production-counter", 
