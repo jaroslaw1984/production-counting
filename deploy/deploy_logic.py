@@ -3,6 +3,7 @@ import shutil
 import hashlib
 import threading
 import sys
+import json
 from pathlib import Path
 
 class ReleaseBuilder:
@@ -58,7 +59,7 @@ class ReleaseBuilder:
         # Twoja dokładna komenda z notatnika rozbita na listę argumentów
         command = [
             # sys.executable to zmienna, która zawsze przechowuje pełną ścieżkę do aktywnego interpretera Pythona
-            sys.executable, "-m", "PyInstaller", 
+            sys.executable, "-m", "PyInstaller",
             "--noconsole", 
             "--onedir", 
             "--clean", 
@@ -114,3 +115,35 @@ class ReleaseBuilder:
         calculated_hash = sha256_hash.hexdigest()
         self.log(f"Wyliczony hash: {calculated_hash}")
         return calculated_hash
+    
+
+    def _upload_to_server(self, local_zip_path: Path) -> str:
+        self.log("Krok 4: Kopiowanie archiwum na dysk sieciowy...")
+        
+        target_dir = Path(r"\\na02\groups\Produkcja\Planowanie OKL\Production Counter Program\builds")
+        target_path = target_dir / local_zip_path.name
+        
+        shutil.copy2(local_zip_path, target_path)
+        
+        return str(target_path)
+
+    def _update_latest_json(self, sha256_hash: str, target_zip_path: str):
+        self.log("Krok 5: Aktualizacja pliku latest.json...")
+        latest_json_path = Path(r"\\na02\groups\Produkcja\Planowanie OKL\Production Counter Program\latest.json")
+        
+        try:
+        
+            with latest_json_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                data["version"] = self.version
+                data["notes"] = self.notes
+                data["sha256"] = sha256_hash
+                data["zip_path"] = target_zip_path
+                
+            with latest_json_path.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+                
+        except Exception as e:
+            self.log(f"Błąd odczytu JSON: {e}")
+            raise e
+        
