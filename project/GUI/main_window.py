@@ -1072,70 +1072,82 @@ def run_app():
               
         # 3) liczenie wymaganego metrażu do zrobienia dla kolejnych bloków (INDEKS + occurrence_index)        
         def _calc_required_m_by_hydra_blocks_from_plan(
-            df_cut_plan: pd.DataFrame,
-            hydra_blocks: list[dict],
-        ) -> dict[int, float]:
-            """
-            Liczy metry do zrobienia DLA KAŻDEGO BLOKU HYDRY.
-            Dla bloku bierzemy order_id z Hydry i sumujemy metry z planu
-            tylko dla tych orderów i tego samego INDEKSU (profile_full/profile).
-            IGNORUJEMY side (bo SAP podstaw nie rozróżnia strony).
-            Zwraca mapę: block_no (0-based) -> required_m
-            """
-            dfx = df_cut_plan.copy()
+                    df_cut_plan: pd.DataFrame,
+                    hydra_blocks: list[dict],
+                ) -> dict[int, float]:
+                    """
+                    Liczy metry do zrobienia DLA KAŻDEGO BLOKU HYDRY.
+                    """
+                    dfx = df_cut_plan.copy()
 
-            profile_col = "profile_full" if "profile_full" in dfx.columns else "profile"
+                    profile_col = "profile_full" if "profile_full" in dfx.columns else "profile"
 
-            # baza profilu z planu: HO9320-20000SL -> HO9320, HO9320 -> HO9320
-            dfx["index_base"] = (
-                dfx[profile_col]
-                .astype("string")
-                .str.strip()
-                .str.split("-", n=1)
-                .str[0]
-            )
+                    # baza profilu z planu
+                    dfx["index_base"] = (
+                        dfx[profile_col]
+                        .astype("string")
+                        .str.strip()
+                        .str.split("-", n=1)
+                        .str[0]
+                    )
 
+                    dfx["order_id"] = _normalize_order_id_series(dfx["order_id"])
 
-            dfx["order_id"] = _normalize_order_id_series(dfx["order_id"])
+                    # --- POPRAWKA: Normalizujemy stronę w planie produkcji ---
+                    if "side" in dfx.columns:
+                        dfx["side_norm"] = (
+                            dfx["side"].astype("string").str.strip()
+                            .str.replace(r"\.0$", "", regex=True)
+                            .str.zfill(4)
+                        )
+                    else:
+                        dfx["side_norm"] = "0021"
 
-            target_p = pd.to_numeric(dfx["target_value_p"], errors="coerce").fillna(0.0)
+                    target_p = pd.to_numeric(dfx["target_value_p"], errors="coerce").fillna(0.0)
 
-            if "good_qty_p" in dfx.columns:
-                good_p = pd.to_numeric(dfx["good_qty_p"], errors="coerce").fillna(0.0)
-            else:
-                good_p = pd.Series(0.0, index=dfx.index)
+                    if "good_qty_p" in dfx.columns:
+                        good_p = pd.to_numeric(dfx["good_qty_p"], errors="coerce").fillna(0.0)
+                    else:
+                        good_p = pd.Series(0.0, index=dfx.index)
 
-            unit = dfx["unit_p"].astype("string").str.strip().str.upper()
+                    unit = dfx["unit_p"].astype("string").str.strip().str.upper()
 
-            remaining_p = target_p.copy()
-            mask_started = good_p > 0
-            remaining_p.loc[mask_started] = (target_p - good_p).clip(lower=0.0)
+                    remaining_p = target_p.copy()
+                    mask_started = good_p > 0
+                    remaining_p.loc[mask_started] = (target_p - good_p).clip(lower=0.0)
 
-            dfx["_m"] = remaining_p.where(unit == "M", 0.0)
+                    dfx["_m"] = remaining_p.where(unit == "M", 0.0)
 
-            out: dict[int, float] = {}
+                    out: dict[int, float] = {}
 
-            for i, b in enumerate(hydra_blocks):
-                gp = str(b["gp"]).strip()
-                gp_base = gp.split("-", 1)[0]  # HO9320-20000SL -> HO9320
-                orders = b.get("order_ids") or set()
+                    for i, b in enumerate(hydra_blocks):
+                        gp = str(b["gp"]).strip()
+                        gp_base = gp.split("-", 1)[0]
+                        orders = b.get("order_ids") or set()
+                        
+                        # --- POPRAWKA: Wyciągamy stronę z aktualnego bloku Hydry ---
+                        b_side = str(b.get("side", "")).strip().zfill(4)
 
-                if not orders:
-                    out[i] = 0.0
-                    continue
+                        if not orders:
+                            out[i] = 0.0
+                            continue
 
-                m = dfx.loc[
-                    (dfx["index_base"] == gp_base) & (dfx["order_id"].isin(orders)),
-                    "_m"
-                ].sum()
+                        # --- POPRAWKA KLUCZOWA: Filtrujemy plan nie tylko po bazie i zleceniu, 
+                        # ale też twardo po stronie (side_norm == b_side) ---
+                        m = dfx.loc[
+                            (dfx["index_base"] == gp_base) & 
+                            (dfx["order_id"].isin(orders)) &
+                            (dfx["side_norm"] == b_side),
+                            "_m"
+                        ].sum()
 
-                out[i] = float(m)
-                
-                # debug: wypisz wymagany metr dla pierwszych kilku bloków
-                # if i == 0:
-                #     print("DEBUG match:", gp, "->", gp_base, "plan_sample_base=", dfx["index_base"].head(5).tolist(), flush=True)
+                        out[i] = float(m)
+                        
+                        # debug: wypisz wymagany metr dla pierwszych kilku bloków
+                        # if i == 0:
+                        #print("DEBUG match:", gp, "->", gp_base, "plan_sample_base=", dfx["index_base"].head(5).tolist(), flush=True
 
-            return out      
+                    return out         
 
         def pick_item_without_required(items: list[dict], remaining_occurrences: int) -> dict:
             """
